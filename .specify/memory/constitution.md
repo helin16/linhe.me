@@ -1,6 +1,12 @@
 <!--
 Sync Impact Report
-- Version change: 2.0.1 → 2.1.0 (MINOR: new principle VII, quality gates expanded)
+- Version change: 2.1.0 → 2.2.0 (MINOR: Yarn replaces npm; new hosting rule on configuration)
+  - I: dependencies are locked by the committed `yarn.lock` (Yarn 4, pinned via `packageManager`)
+  - VI: wording only ("each new dependency")
+  - Development Workflow & Quality Gates: gates renamed to `yarn build`, `yarn test`, `yarn e2e`
+  - Hosting & Deployment Constraints: added "server addresses and site URLs are never hard-coded"
+    and "deploys run via `yarn deploy`"
+- Previous amendment: 2.0.1 → 2.1.0 (MINOR: new principle VII, quality gates expanded)
   - Added principle: VII. Every Function Unit Tested, Every Journey End-to-End Tested
   - Development Workflow & Quality Gates: `npm test` and `npm run e2e` gates added; the hand
     checks shrink to what automation can't cover (real iPad); the relay self-check rule is
@@ -35,7 +41,8 @@ Sync Impact Report
 - The only non-TypeScript source files allowed are plain `.css` stylesheets, Vite's single
   `index.html` shell, and config/data files (JSON, YAML, Caddyfile).
 - The front end is React, built with Vite. Only the build output (`dist/`) is ever served.
-- Third-party code MUST come from npm, with exact versions locked by the committed lockfile.
+- Third-party code MUST come from the npm registry, installed with Yarn 4 (version pinned in
+  `package.json` `packageManager`), with exact versions locked by the committed `yarn.lock`.
   No runtime script tags from CDNs.
 
 Rationale: one language and one toolchain for the site, the games and the relays; types are shared
@@ -86,8 +93,8 @@ Rationale: more multiplayer games are planned; they share infrastructure but not
 
 ### VI. Simplicity First
 
-- Prefer the platform: browser APIs and Node built-ins before libraries. Each new npm dependency
-  needs a stated reason in the plan.
+- Prefer the platform: browser APIs and Node built-ins before libraries. Each new dependency needs
+  a stated reason in the plan.
 - Fewest files that work. No abstractions, config or scaffolding for needs that don't exist yet.
 - Delete unused code, styles, routes and links in the same change that orphans them.
 
@@ -120,8 +127,11 @@ end-to-end tests keep "plays exactly as before" true as more games are added.
 - The web root MUST contain only build output. The repo, `.git`, tooling folders, specs, docs and
   relay source are never placed in or served from it.
 - Relays run as their own `systemd` services, separate from Caddy, and restart on failure.
-- Deploys MUST be repeatable from a documented command; after each deploy, verify with `curl`
-  that changed pages return 200 and that a relay endpoint answers.
+- Deploys MUST run through `yarn deploy` (`scripts/deploy.ts`): committed tree only, locked
+  install, tests and build first, then a check that the live site serves the new build and its
+  assets (and that a relay endpoint answers, once relays exist).
+- Server addresses, hostnames and site URLs MUST NOT be hard-coded in the repo. They come from a
+  git-ignored `.env`; the committed `.env.example` documents the keys with placeholder values.
 - Secrets, credentials and private keys MUST NEVER be committed; the repo is public. `.env`
   files are git-ignored.
 
@@ -133,9 +143,9 @@ end-to-end tests keep "plays exactly as before" true as more games are added.
   the resulting diff before it is committed or deployed. Each finding MUST be fixed, or waived
   with a one-line reason in the commit message. Changes made to fix findings get reviewed again.
 - Before commit, all of these MUST pass with no errors (principle VII):
-  1. `npm run build` (type-check plus Vite build);
-  2. `npm test` (unit tests, with the 100% function coverage check);
-  3. `npm run e2e` (end-to-end tests against the production build in Chromium, WebKit and
+  1. `yarn build` (type-check plus Vite build);
+  2. `yarn test` (unit tests, with the 100% function coverage check);
+  3. `yarn e2e` (end-to-end tests against the production build in Chromium, WebKit and
      Firefox, with no console errors).
 - The end-to-end suite MUST include, for every game: loading with no console errors, playing
   with keyboard and with touch, single-player with no relay running, and (when online play is
@@ -157,4 +167,4 @@ end-to-end tests keep "plays exactly as before" true as more games are added.
   `/speckit-analyze` run checks changes against these principles. Runtime guidance lives in
   `README.md`.
 
-**Version**: 2.1.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-10-28
+**Version**: 2.2.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-10-28

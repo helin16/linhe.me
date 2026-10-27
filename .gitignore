@@ -5,3 +5,5 @@ dist/
 .DS_Store
 .claude/settings.local.json
 !.env.example
+.yarn/install-state.gz
+.yarn/cache/
