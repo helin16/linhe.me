@@ -1,6 +1,6 @@
 # linhe.me
 
-Lin He's personal site. Plain static files: upload the repo contents (except `.git`, `README.md` and `*.py`) to `public_html` on the host.
+Lin He's personal site. Plain static files, served from a git checkout on the host: to deploy, push to `master` then run `git pull` in `~/public_html/website_eb66a13e` (linhe.me's document root). `.htaccess` hides `.git`, `README.md` and `*.py` from the web.
 
 - `index.html`, `style.css`: home page
 - `games/`: browser games, one folder each with its own `index.html`
