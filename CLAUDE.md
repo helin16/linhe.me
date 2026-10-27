@@ -1,0 +1,1 @@
+- After every change, run `/code-review` on the diff before committing or deploying. Fix each finding or note why it was skipped in the commit message. See `.specify/memory/constitution.md`.

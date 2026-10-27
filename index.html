@@ -3,35 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lin He</title>
 <meta name="description" content="Small games by Lin He that you can play in your browser.">
-<link rel="stylesheet" href="style.css">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Lin He</title>
 </head>
 <body>
-<header><div class="wrap">
-  <a class="logo" href="./">linhe<span>.me</span></a>
-  <nav><a href="./" aria-current="page">Home</a><a href="games/">Games</a></nav>
-</div></header>
-
-<main class="wrap">
-  <div class="hero">
-    <h1>Lin He</h1>
-    <p>Welcome to Lin's show ground: a few small games you can play right in your browser.</p>
-  </div>
-
-  <section id="games">
-    <h2>Games</h2>
-    <div class="cards">
-      <a class="card" href="games/turbo-tumble/">
-        <div class="art kart" aria-hidden="true">🏎️</div>
-        <div class="body"><h3>Turbo Tumble</h3><p>3D kart racing with drifts, items and four tracks.</p><span class="tag">1–2 players · iPad ready</span></div>
-      </a>
-    </div>
-    <p><a href="games/">All games →</a></p>
-  </section>
-</main>
-
-<footer><div class="wrap">© <span id="y"></span> Lin He · <a href="https://github.com/helin16">GitHub</a></div></footer>
-<script>document.getElementById('y').textContent = new Date().getFullYear();</script>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

@@ -1,2 +1,0 @@
-# keep repo-only files off the web
-RedirectMatch 404 /(\.git|README\.md|.*\.py$)
