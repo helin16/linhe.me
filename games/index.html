@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Games · Lin He</title>
+<meta name="description" content="Small games that run in your browser.">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><div class="wrap">
+  <a class="logo" href="../">linhe<span>.me</span></a>
+  <nav><a href="../">Home</a><a href="../#projects">Projects</a><a href="./" aria-current="page">Games</a></nav>
+</div></header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Games</h1>
+    <p>Small games that run in your browser. No downloads or sign-ups needed.</p>
+  </div>
+  <section>
+    <!-- add a new game: put it in games/<name>/index.html and copy one of these cards -->
+    <div class="cards">
+      <a class="card" href="turbo-tumble/">
+        <div class="art kart" aria-hidden="true">🏎️</div>
+        <div class="body">
+          <h3>Turbo Tumble</h3>
+          <p>Race three rivals over four themed tracks. Drift to charge a boost, and grab item boxes for turbos, goo and zaps. Customise your driver and kart, and race a friend split-screen.</p>
+          <span class="tag">Keyboard or touch · 1–2 players</span>
+        </div>
+      </a>
+      <div class="card" aria-hidden="true">
+        <div class="art soon">More coming soon</div>
+        <div class="body"><h3>Next game</h3><p>In the works.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap">© <span id="y"></span> Lin He</div></footer>
+<script>document.getElementById('y').textContent = new Date().getFullYear();</script>
+</body>
+</html>
