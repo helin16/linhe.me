@@ -14,9 +14,9 @@ export default defineConfig({
   use: { baseURL: `http://localhost:${previewPort}` },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { // headless Firefox turns WebGL off on GPU-less machines (CI); turn it back on
+    { // headless Firefox can't create a WebGL context on GPU-less Linux (CI): run it windowed (CI wraps e2e in xvfb-run)
       name: 'firefox',
-      use: { ...devices['Desktop Firefox'], launchOptions: { firefoxUserPrefs: { 'webgl.force-enabled': true } } },
+      use: { ...devices['Desktop Firefox'], headless: !process.env.CI },
     },
     { name: 'webkit-ipad', use: { ...devices['iPad (gen 7)'] } }, // Safari engine with touch
   ],
