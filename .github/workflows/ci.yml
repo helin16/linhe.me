@@ -13,6 +13,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false # its auto cache runs Yarn 1 before corepack is enabled
       - run: npm i -g corepack && corepack enable
       - run: yarn install --immutable
       - run: yarn test
