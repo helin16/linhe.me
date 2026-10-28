@@ -104,8 +104,8 @@ existing Turbo Tumble e2e (`online`, `lobby`, `standings`, `online-down`, `load`
 - [X] T025 Performance tuning (SC-002): 20 snakes and ~400 orbs hold 60 fps on desktop and the iPad project; profile `step` and drawing if T010's frame check is close
 - [X] T026 Run `yarn test` (100% functions) and `yarn e2e:local`
 - [X] T027 `/code-review` on the diff, also confirming no snake.io names, graphics, sounds or text are used (FR-015); fix each finding or note why it was skipped
-- [ ] T028 Commit with any waivers; push; CI green (including Firefox)
-- [ ] T029 `yarn deploy`; check quickstart steps 1–8 live
+- [X] T028 Commit with any waivers; push; CI green (including Firefox)
+- [X] T029 `yarn deploy`; check quickstart steps 1–8 live
 
 ---
 
