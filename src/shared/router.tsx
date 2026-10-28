@@ -3,7 +3,7 @@ import { useSyncExternalStore, type AnchorHTMLAttributes } from 'react';
 // Tiny history router: the site has a handful of flat routes (see specs/.../contracts/routes.md).
 const NAV = 'navigate';
 
-/** Old file URLs lose `index.html` (`/games/index.html` → `/games/`), and every path ends in a slash. */
+/** Old file URLs lose a trailing `index.html` (it loads its folder's page), and every path ends in a slash. */
 export function normalise(path: string): string {
   path = path.replace(/\/index\.html$/, '/');
   return path.endsWith('/') ? path : path + '/';

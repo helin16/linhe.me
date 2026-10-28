@@ -1,8 +1,11 @@
 import type { ComponentType } from 'react';
 
+export const GameSlug = { TurboTumble: 'turbo-tumble' } as const;
+export type GameSlug = typeof GameSlug[keyof typeof GameSlug];
+
 // The one games list: the home page, the games page and the router all read it.
 export type GameEntry = {
-  slug: string;
+  slug: GameSlug;
   name: string;
   summary: string;
   description: string;
@@ -14,7 +17,7 @@ export type GameEntry = {
 
 export const games: GameEntry[] = [
   {
-    slug: 'turbo-tumble',
+    slug: GameSlug.TurboTumble,
     name: 'Turbo Tumble',
     summary: '3D kart racing with drifts, items and four tracks.',
     description:

@@ -5,6 +5,7 @@ import Home from './pages/Home.tsx';
 import NotFound from './pages/NotFound.tsx';
 import Layout from './shared/Layout.tsx';
 import { usePath } from './shared/router.tsx';
+import { gameRoute, Route } from './shared/routes.ts';
 
 // a game chunk that fails to download (network blip, or a stale tab after a redeploy) shows this
 // instead of crashing the whole app
@@ -19,15 +20,15 @@ function LoadFailed() {
   );
 }
 
-const gamePages = new Map(games.map(g => [`/games/${g.slug}/`, lazy(() => g.load().catch(err => {
+const gamePages = new Map(games.map(g => [gameRoute(g.slug), lazy(() => g.load().catch(err => {
   console.error(`couldn't load ${g.slug}`, err);
   return { default: LoadFailed };
 }))]));
 
 export default function App() {
   const path = usePath();
-  if (path === '/') return <Home />;
-  if (path === '/games/') return <Games />;
+  if (path === Route.Home) return <Home />;
+  if (path === Route.Games) return <Games />;
   const Game = gamePages.get(path);
   if (Game) return <Suspense fallback={null}><Game /></Suspense>;
   return <NotFound />;

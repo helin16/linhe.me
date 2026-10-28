@@ -1,13 +1,13 @@
 // Turbo Tumble, ported from the original single-page script. Gameplay, tuning and visuals are unchanged;
 // the game now renders into `root` and mount() returns a cleanup that leaves the page as it found it.
 import * as THREE from 'three';
-import { isIn, KART_STYLES, loadSaved, MAP_NAMES, saveSettings, type KartStyle, type MapName, type PlayerLook } from './settings.ts';
+import { isMember, values } from '../../shared/enum.ts';
+import { Action, EditTab, EndAction, Item, MsgType, PlayerMode, RaceState } from './enums.ts';
+import { KartStyle, loadSaved, saveSettings, Track, type PlayerLook } from './settings.ts';
 
 type Vec = THREE.Vector3;
 type StyleDef = { speed: number; turn: number; off: number; body: [number, number, number]; wheel: number; bars: [number, number, number] };
 type Look = { name: string; color: number; helmet: number; skin: number; style: KartStyle };
-type Item = 'turbo' | 'goo' | 'zap';
-type Action = 'up' | 'down' | 'left' | 'right' | 'drift' | 'item';
 type Input = { accel: number; steer: number; drift: boolean };
 type Prop = [THREE.BufferGeometry, THREE.Material, number];
 type MapDef = { pts: [number, number][]; sky: number; ground: number; road: number; curb: [number, number]; wall: [number, number]; light: number; glow?: boolean; prop: () => Prop[] };
@@ -21,33 +21,32 @@ type Kart = Look & {
   net: NetState | null; netAt: number; human: boolean; remote: boolean; ai: boolean;
 };
 type Voice = { out: StereoPannerNode; engine: OscillatorNode; engineGain: GainNode; screechGain: GainNode };
-type State = 'menu' | 'count' | 'race' | 'done';
 type Net = { slot: number; peers: Set<number>; profiles: Record<number, PlayerLook>; sendT?: number };
 type Msg =
-  | { t: 'hello'; slot: number; peers: number[] }
-  | { t: 'join' | 'leave'; slot: number }
-  | { t: 'me'; from: number; p: PlayerLook }
-  | { t: 'start'; map: string }
-  | { t: 's'; k: [number, ...NetState][] }
-  | { t: 'goo'; x: number; z: number; id: string }
-  | { t: 'pop'; id: string }
-  | { t: 'zap'; by: number; to: number };
+  | { t: typeof MsgType.Hello; slot: number; peers: number[] }
+  | { t: typeof MsgType.Join | typeof MsgType.Leave; slot: number }
+  | { t: typeof MsgType.Me; from: number; p: PlayerLook }
+  | { t: typeof MsgType.Start; map: string }
+  | { t: typeof MsgType.State; k: [number, ...NetState][] }
+  | { t: typeof MsgType.Goo; x: number; z: number; id: string }
+  | { t: typeof MsgType.Pop; id: string }
+  | { t: typeof MsgType.Zap; by: number; to: number };
 
 const MARKUP = `
 <div id="hud">
-  <div class="pv"><div class="lap"></div><div class="item"></div><div class="pos"></div><div class="wrong" role="alert">WRONG WAY</div>
+  <div class="pv"><div class="lap"></div><div class="item-slot"></div><div class="pos"></div><div class="wrong" role="alert">WRONG WAY</div>
     <div class="tc"><div class="steer" aria-label="Steer"><span>◀</span><span>▶</span></div>
-      <div class="acts"><button data-a="item" aria-label="Use item">ITEM</button><button data-a="down">BRAKE</button><button data-a="drift">DRIFT</button></div></div></div>
-  <div class="pv"><div class="lap"></div><div class="item"></div><div class="pos"></div><div class="wrong" role="alert">WRONG WAY</div>
+      <div class="acts"><button data-a="${Action.Item}" aria-label="Use item">ITEM</button><button data-a="${Action.Down}">BRAKE</button><button data-a="${Action.Drift}">DRIFT</button></div></div></div>
+  <div class="pv"><div class="lap"></div><div class="item-slot"></div><div class="pos"></div><div class="wrong" role="alert">WRONG WAY</div>
     <div class="tc"><div class="steer" aria-label="Steer"><span>◀</span><span>▶</span></div>
-      <div class="acts"><button data-a="item" aria-label="Use item">ITEM</button><button data-a="down">BRAKE</button><button data-a="drift">DRIFT</button></div></div></div>
+      <div class="acts"><button data-a="${Action.Item}" aria-label="Use item">ITEM</button><button data-a="${Action.Down}">BRAKE</button><button data-a="${Action.Drift}">DRIFT</button></div></div></div>
   <div id="tbar"><button id="tRestart" aria-label="Restart">⟲</button><button id="tGarage" aria-label="Garage">🏠</button><button id="tMute" aria-label="Mute">🔈</button></div>
   <div id="time"></div><div id="mute">🔇 Muted — press M</div>
   <div id="msg"></div>
   <canvas id="map" width="160" height="160"></canvas>
   <div id="help">↑↓←→ / WASD drive<br>Space (hold + steer) drift → boost<br>E use item · R restart<br>G garage · M mute</div>
 </div>
-<div id="menu">
+<div id="garage-menu">
   <h1>Turbo Tumble</h1>
   <div>Players<br><span id="cPlayers"></span></div>
   <div id="editRow">Customise<br><span id="cEdit"></span></div>
@@ -68,23 +67,23 @@ const GAME_VIEWPORT = 'width=device-width,initial-scale=1,maximum-scale=1,user-s
 const LAPS = 3, W = 18, N = 600, MAX = 42, ACC = 30, WALL = W / 2 + 10;
 // speed/turn multiply the base values; off = top-speed factor on grass; bars = garage display
 const STYLES: Record<KartStyle, StyleDef> = {
-  Classic: {speed: 1,    turn: 1,    off: 0.45, body: [2.2, 0.7, 3.4], wheel: 0.5,  bars: [3, 3, 2]},
-  Buggy:   {speed: 0.95, turn: 1.1,  off: 0.7,  body: [2.6, 0.9, 3.0], wheel: 0.65, bars: [2, 4, 4]},
-  Rocket:  {speed: 1.06, turn: 0.88, off: 0.4,  body: [1.8, 0.6, 4.0], wheel: 0.45, bars: [5, 2, 1]},
+  [KartStyle.Classic]: {speed: 1,    turn: 1,    off: 0.45, body: [2.2, 0.7, 3.4], wheel: 0.5,  bars: [3, 3, 2]},
+  [KartStyle.Buggy]:   {speed: 0.95, turn: 1.1,  off: 0.7,  body: [2.6, 0.9, 3.0], wheel: 0.65, bars: [2, 4, 4]},
+  [KartStyle.Rocket]:  {speed: 1.06, turn: 0.88, off: 0.4,  body: [1.8, 0.6, 4.0], wheel: 0.45, bars: [5, 2, 1]},
 };
 const SKINS = ['#ffe0bd', '#f1c27d', '#c68642', '#8d5524', '#5c3a1e', '#7fdc6a', '#9ec5ff'];
 const RACERS: Look[] = [
-  {name: 'Blaze', color: 0xff4444, helmet: 0xffffff, skin: 0xffe0bd, style: 'Classic'},
-  {name: 'Pip',   color: 0x44aaff, helmet: 0xffee00, skin: 0x8d5524, style: 'Buggy'},
-  {name: 'Mango', color: 0xffaa22, helmet: 0x22aa44, skin: 0xf1c27d, style: 'Rocket'},
-  {name: 'Rook',  color: 0x9955ee, helmet: 0x222222, skin: 0xc68642, style: 'Classic'},
+  {name: 'Blaze', color: 0xff4444, helmet: 0xffffff, skin: 0xffe0bd, style: KartStyle.Classic},
+  {name: 'Pip',   color: 0x44aaff, helmet: 0xffee00, skin: 0x8d5524, style: KartStyle.Buggy},
+  {name: 'Mango', color: 0xffaa22, helmet: 0x22aa44, skin: 0xf1c27d, style: KartStyle.Rocket},
+  {name: 'Rook',  color: 0x9955ee, helmet: 0x222222, skin: 0xc68642, style: KartStyle.Classic},
 ];
 const CONTROLS: Record<Action, string>[] = [
-  {up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', drift: 'Space', item: 'KeyE'},
-  {up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', drift: 'ShiftRight', item: 'Enter'},
+  {[Action.Up]: 'KeyW', [Action.Down]: 'KeyS', [Action.Left]: 'KeyA', [Action.Right]: 'KeyD', [Action.Drift]: 'Space', [Action.Item]: 'KeyE'},
+  {[Action.Up]: 'ArrowUp', [Action.Down]: 'ArrowDown', [Action.Left]: 'ArrowLeft', [Action.Right]: 'ArrowRight', [Action.Drift]: 'ShiftRight', [Action.Item]: 'Enter'},
 ];
-const ICON: Record<Item, string> = {turbo: '🚀', goo: '🟢', zap: '⚡'};
-const ITEMS = Object.keys(ICON) as Item[];
+const ICON: Record<Item, string> = {[Item.Turbo]: '🚀', [Item.Goo]: '🟢', [Item.Zap]: '⚡'};
+const ITEMS = values(Item);
 
 export function mount(root: HTMLElement): () => void {
   const listening = new AbortController(), signal = listening.signal;
@@ -171,23 +170,23 @@ export function mount(root: HTMLElement): () => void {
     [new THREE.BoxGeometry(0.8, 2.4, 0.8).translate(1.7, 0, 0), cactusM, 4.4], [new THREE.BoxGeometry(0.8, 2.4, 0.8).translate(-1.7, 0, 0), cactusM, 4.4]];
   const pine: Prop[] = [[trunk, lam(0x6b4423), 1.5], [new THREE.ConeGeometry(2.6, 8, 7), lam(0x1f5f3a), 6.5], [new THREE.ConeGeometry(1.4, 3, 7), lam(0xffffff), 9.6]];
   const neonM = [0xff00cc, 0x00ffff, 0xffee00].map(c => new THREE.MeshLambertMaterial({color: 0x1a1a33, emissive: c, emissiveIntensity: 0.35}));
-  const MAPS: Record<MapName, MapDef> = {
-    Meadow: {
+  const MAPS: Record<Track, MapDef> = {
+    [Track.Meadow]: {
       pts: [[0,0],[80,-10],[150,20],[180,90],[140,150],[60,140],[20,190],[-60,200],[-130,150],[-120,70],[-170,10],[-140,-60],[-60,-50]],
       sky: 0x7ec8f0, ground: 0x5cb85c, road: 0x55555f, curb: [0xdd2222, 0xffffff], wall: [0x2266dd, 0xffffff], light: 0.8,
       prop: () => leafy,
     },
-    Desert: {
+    [Track.Desert]: {
       pts: [[0,0],[100,0],[170,40],[170,120],[110,150],[60,110],[0,140],[-70,150],[-120,100],[-110,30],[-60,0]],
       sky: 0xf6c28b, ground: 0xe0b872, road: 0x6b5a4a, curb: [0xcc5500, 0xffeecc], wall: [0x8b4513, 0xf4a460], light: 0.9,
       prop: () => cactus,
     },
-    Snow: {
+    [Track.Snow]: {
       pts: [[0,0],[90,0],[140,-40],[200,-10],[190,60],[120,70],[60,100],[80,160],[20,200],[-60,170],[-50,100],[-110,60],[-90,0]],
       sky: 0xcfe3f3, ground: 0xf4f8fb, road: 0x5a6070, curb: [0x3366cc, 0xffffff], wall: [0xcc2222, 0xffffff], light: 0.8,
       prop: () => pine,
     },
-    Neon: {
+    [Track.Neon]: {
       pts: [[0,0],[120,0],[120,-60],[200,-60],[200,80],[100,80],[100,160],[-40,160],[-40,80],[-100,80],[-100,0]],
       sky: 0x0b0b2a, ground: 0x1a1a2e, road: 0x2a2a3a, curb: [0xff00cc, 0x00ffff], wall: [0x00ffff, 0xff00cc], light: 0.45, glow: true,
       prop: () => { const h = 10 + Math.random() * 40; return [[new THREE.BoxGeometry(8, h, 8), neonM[Math.floor(Math.random() * 3)], h / 2]]; },
@@ -285,9 +284,9 @@ export function mount(root: HTMLElement): () => void {
     };
     const mat = new THREE.MeshLambertMaterial({color: k.color});
     add(new THREE.BoxGeometry(bw, bh, bl), mat, 0, y, 0);
-    if (k.style !== 'Buggy') add(new THREE.BoxGeometry(bw + 0.2, 0.2, 0.6), mat, 0, y + 0.8, -bl / 2 + 0.2);
-    if (k.style === 'Rocket') add(new THREE.ConeGeometry(bh / 2 + 0.1, 1.2, 8).rotateX(Math.PI / 2), mat, 0, y, bl / 2 + 0.6);
-    if (k.style === 'Buggy') {
+    if (k.style !== KartStyle.Buggy) add(new THREE.BoxGeometry(bw + 0.2, 0.2, 0.6), mat, 0, y + 0.8, -bl / 2 + 0.2);
+    if (k.style === KartStyle.Rocket) add(new THREE.ConeGeometry(bh / 2 + 0.1, 1.2, 8).rotateX(Math.PI / 2), mat, 0, y, bl / 2 + 0.6);
+    if (k.style === KartStyle.Buggy) {
       for (const sx of [-0.8, 0.8]) add(new THREE.BoxGeometry(0.15, 1.6, 0.15), dark, sx, y + 1.2, -0.9);
       add(new THREE.BoxGeometry(1.75, 0.15, 0.15), dark, 0, y + 2, -0.9);
     }
@@ -321,7 +320,7 @@ export function mount(root: HTMLElement): () => void {
   const kartOf = (s: number) => karts[(s - net!.slot + 4) % 4];
   const isHost = () => !net || net.slot < Math.min(4, ...net.peers);
   const send = (m: object) => net && fetch('send', {method: 'POST', body: JSON.stringify({...m, from: net.slot})}).catch(() => {});
-  const sendProfile = () => send({t: 'me', p: cfg.players[0]});
+  const sendProfile = () => send({t: MsgType.Me, p: cfg.players[0]});
   // human = a person drives it (here or elsewhere); remote = its state arrives over the network
   function roles() {
     karts.forEach((k, n) => {
@@ -333,7 +332,7 @@ export function mount(root: HTMLElement): () => void {
   }
 
   const fromProfile = (p: PlayerLook, fallback: string): Look => ({name: String(p.name).trim().slice(0, 10) || fallback,
-    color: hex(p.color), helmet: hex(p.helmet), skin: hex(p.skin), style: isIn(KART_STYLES, p.style) ? p.style : 'Classic'});
+    color: hex(p.color), helmet: hex(p.helmet), skin: hex(p.skin), style: isMember(KartStyle, p.style) ? p.style : KartStyle.Classic});
   function applyCfg() {
     karts.forEach((k, n) => {
       const s = slotOf(n), p = n === 0 ? cfg.players[0] : n === 1 && cfg.two ? cfg.players[1] : net && net.profiles[s];
@@ -371,7 +370,7 @@ export function mount(root: HTMLElement): () => void {
     keys.add(e.code);
     const n = CONTROLS.findIndex(c => c.item === e.code);
     if (n >= 0) useItem(karts[cfg.two ? n : 0]);
-    if (e.code === 'KeyR' && state !== 'menu') startRace();
+    if (e.code === 'KeyR' && state !== RaceState.Menu) startRace();
     if (e.code === 'KeyG') menu();
     if (e.code === 'KeyM') toggleMute();
   }, {signal});
@@ -379,11 +378,11 @@ export function mount(root: HTMLElement): () => void {
   function humanInput(k: Kart): Input {
     const c = CONTROLS[k.pn], solo = !cfg.two; // solo: player 1 can use either key set
     const on = (a: Action) => +(keys.has(c[a]) || (solo && keys.has(CONTROLS[1][a])));
-    return {accel: touchDriving && !on('down') ? 1 : on('up') - on('down'), steer: on('left') - on('right'), drift: !!on('drift')};
+    return {accel: touchDriving && !on(Action.Down) ? 1 : on(Action.Up) - on(Action.Down), steer: on(Action.Left) - on(Action.Right), drift: !!on(Action.Drift)};
   }
 
   // --- race state ---
-  let state: State = 'menu', clock = 0, raceTime = 0, menuA = 0, edit = 0, leadProg = 0;
+  let state: RaceState = RaceState.Menu, clock = 0, raceTime = 0, menuA = 0, edit = 0, leadProg = 0;
   const progress = (k: Kart) => k.lap * N + k.idx;
   const ranked = () => [...karts].sort((a, b) =>
     (a.finished && b.finished) ? a.finishTime - b.finishTime : (+b.finished - +a.finished) || progress(b) - progress(a));
@@ -405,38 +404,38 @@ export function mount(root: HTMLElement): () => void {
     boxes.forEach(b => { b.t = 0; b.mesh.visible = true; });
     puddles.forEach(p => scene.remove(p)); puddles = [];
     effects.forEach(e => scene.remove(e.obj)); effects = [];
-    state = 'count'; clock = 3; raceTime = 0;
+    state = RaceState.Count; clock = 3; raceTime = 0;
     root.classList.toggle('two', cfg.two);
     $('end').style.display = 'none';
     (document.activeElement as HTMLElement | null)?.blur(); // so Space doesn't re-press a focused button
   }
 
   function menu() {
-    reset(); state = 'menu';
-    $('menu').style.display = 'flex';
+    reset(); state = RaceState.Menu;
+    $('garage-menu').style.display = 'flex';
   }
   // online, only the host starts races, and starting puts everyone on the grid
   function startRace() {
-    if (net) { if (!isHost()) return; send({t: 'start', map: cfg.map}); }
-    initAudio(); $('menu').style.display = 'none'; reset();
+    if (net) { if (!isHost()) return; send({t: MsgType.Start, map: cfg.map}); }
+    initAudio(); $('garage-menu').style.display = 'none'; reset();
   }
 
   function useItem(k: Kart) {
-    if (!k.item || state !== 'race' || k.spin > 0) return;
+    if (!k.item || state !== RaceState.Race || k.spin > 0) return;
     const it = k.item; k.item = null;
-    if (it === 'turbo') { k.boost = 1.3; if (k.human) SFX.boost(pan(k)); }
-    if (it === 'goo') {
+    if (it === Item.Turbo) { k.boost = 1.3; if (k.human) SFX.boost(pan(k)); }
+    if (it === Item.Goo) {
       const x = k.pos.x - Math.sin(k.h) * 4, z = k.pos.z - Math.cos(k.h) * 4, id = `${net ? net.slot : 0}-${++puddleN}`;
-      addPuddle(x, z, id); send({t: 'goo', x, z, id});
+      addPuddle(x, z, id); send({t: MsgType.Goo, x, z, id});
       if (k.human) SFX.goo(pan(k));
     }
-    if (it === 'zap') {
+    if (it === Item.Zap) {
       // hits the kart directly ahead in the standings; the leader gets a turbo instead
       const r = ranked(), ahead = r[r.indexOf(k) - 1];
       if (!ahead) { k.boost = 1.3; if (k.human) SFX.boost(pan(k)); return; }
       if (k.human) SFX.zap(pan(k));
       zapFx(k, ahead);
-      send({t: 'zap', by: slotOf(k.pn), to: slotOf(ahead.pn)}); // whoever controls the target spins it
+      send({t: MsgType.Zap, by: slotOf(k.pn), to: slotOf(ahead.pn)}); // whoever controls the target spins it
       if (!ahead.remote) { ahead.spin = 1.2; if (ahead.human) SFX.spin(pan(ahead)); }
     }
   }
@@ -455,26 +454,26 @@ export function mount(root: HTMLElement): () => void {
   }
 
   function onNet(m: Msg) {
-    if (m.t === 'hello') {
+    if (m.t === MsgType.Hello) {
       net = {slot: m.slot, peers: new Set(m.peers), profiles: {}};
       edit = 0; loadInputs(); refreshMenu(); menu(); // refreshMenu also sends our profile
     }
     const n = net;
     if (!n) return;
-    if (m.t === 'join') { n.peers.add(m.slot); sendProfile(); }
-    if (m.t === 'leave') { n.peers.delete(m.slot); delete n.profiles[m.slot]; roles(); applyCfg(); }
-    if (m.t === 'me') { n.peers.add(m.from); n.profiles[m.from] = m.p; applyCfg(); }
-    if (m.t === 'start' && isIn(MAP_NAMES, m.map)) {
+    if (m.t === MsgType.Join) { n.peers.add(m.slot); sendProfile(); }
+    if (m.t === MsgType.Leave) { n.peers.delete(m.slot); delete n.profiles[m.slot]; roles(); applyCfg(); }
+    if (m.t === MsgType.Me) { n.peers.add(m.from); n.profiles[m.from] = m.p; applyCfg(); }
+    if (m.t === MsgType.Start && isMember(Track, m.map)) {
       if (m.map !== cfg.map) { cfg.map = m.map; buildTrack(); refreshMenu(); }
-      $('menu').style.display = 'none'; reset();
+      $('garage-menu').style.display = 'none'; reset();
     }
-    if (m.t === 's') for (const [s, ...v] of m.k) {
+    if (m.t === MsgType.State) for (const [s, ...v] of m.k) {
       const k = kartOf(s);
       if (k && k.remote) { k.net = v; k.netAt = performance.now(); }
     }
-    if (m.t === 'goo') addPuddle(m.x, m.z, m.id);
-    if (m.t === 'pop') puddles = puddles.filter(p => p.userData.id !== m.id || (scene.remove(p), false));
-    if (m.t === 'zap') {
+    if (m.t === MsgType.Goo) addPuddle(m.x, m.z, m.id);
+    if (m.t === MsgType.Pop) puddles = puddles.filter(p => p.userData.id !== m.id || (scene.remove(p), false));
+    if (m.t === MsgType.Zap) {
       const t = kartOf(m.to);
       zapFx(kartOf(m.by), t);
       if (!t.remote) { t.spin = 1.2; if (t.human) SFX.spin(pan(t)); }
@@ -497,7 +496,8 @@ export function mount(root: HTMLElement): () => void {
       : `Online as P${net.slot + 1} · ${net.peers.size + 1}/4 players<br>${isHost() ? 'You are the host: pick a track and start' : 'The host picks the track and starts'}`;
     $<HTMLButtonElement>('go').disabled = !isHost();
     $('go').textContent = isHost() ? 'Start race' : 'Waiting for host…';
-    [...$('cPlayers').children].forEach((b, i) => b.classList.toggle('on', i === (es ? 2 : +cfg.two)));
+    const mode = es ? PlayerMode.Online : cfg.two ? PlayerMode.Two : PlayerMode.One;
+    [...$('cPlayers').children].forEach(b => b.classList.toggle('on', b.textContent === mode));
   }
 
   function locate(k: Kart) {
@@ -589,13 +589,13 @@ export function mount(root: HTMLElement): () => void {
   function update(dt: number) {
     bumpCd -= dt;
     const hs = humans();
-    if (state === 'count') {
+    if (state === RaceState.Count) {
       const c = Math.ceil(clock);
       if (clock === 3) SFX.beep();
       clock -= dt;
-      if (clock <= 0) { state = 'race'; clock = 1; SFX.go(); }
+      if (clock <= 0) { state = RaceState.Race; clock = 1; SFX.go(); }
       else if (Math.ceil(clock) !== c) SFX.beep();
-    } else if (state !== 'menu') {
+    } else if (state !== RaceState.Menu) {
       raceTime += dt; clock -= dt;
       leadProg = Math.max(...karts.filter(k => k.human).map(progress));
       for (const k of karts) k.remote ? follow(k, dt) : drive(k, dt, k.ai ? aiInput(k, dt) : humanInput(k));
@@ -612,20 +612,20 @@ export function mount(root: HTMLElement): () => void {
       if (net && (net.sendT = (net.sendT || 0) + dt) > 0.05) { // ~20 updates a second
         net.sendT = 0;
         const r = (v: number) => Math.round(v * 100) / 100;
-        send({t: 's', k: karts.filter(k => !k.remote).map(k =>
+        send({t: MsgType.State, k: karts.filter(k => !k.remote).map(k =>
           [slotOf(k.pn), r(k.pos.x), r(k.pos.z), r(k.h), r(k.speed), k.lap, k.idx, r(k.m.rotation.y), +k.spark.visible, +k.finished, r(k.finishTime)])});
       }
       for (const k of karts.filter(k => !k.remote)) {
         for (const b of boxes) if (b.t <= 0 && k.pos.distanceToSquared(b.mesh.position.clone().setY(0)) < 7) {
           b.t = 3; b.mesh.visible = false;
           if (!k.item) {
-            k.item = ITEMS[Math.floor(Math.random() * 3)]; k.itemT = 1 + Math.random() * 3;
+            k.item = ITEMS[Math.floor(Math.random() * ITEMS.length)]; k.itemT = 1 + Math.random() * 3;
             if (k.human) SFX.pickup(pan(k));
           }
         }
         puddles = puddles.filter(p => {
           if (k.pos.distanceToSquared(p.position.clone().setY(0)) < 6) {
-            k.spin = 1; scene.remove(p); send({t: 'pop', id: p.userData.id});
+            k.spin = 1; scene.remove(p); send({t: MsgType.Pop, id: p.userData.id});
             if (k.human) SFX.spin(pan(k));
             return false;
           }
@@ -637,12 +637,12 @@ export function mount(root: HTMLElement): () => void {
         const l = L[k.idx], along = (Math.sin(k.h) * -l.z + Math.cos(k.h) * l.x) * Math.sign(k.speed);
         k.wrongT = along < -0.3 && Math.abs(k.speed) > 5 && !k.finished ? k.wrongT + dt : 0;
       }
-      if (state === 'race' && hs.every(k => k.finished)) { state = 'done'; showEnd(); }
+      if (state === RaceState.Race && hs.every(k => k.finished)) { state = RaceState.Done; showEnd(); }
     }
     for (const b of boxes) { b.mesh.rotation.y += dt * 2; b.mesh.rotation.x += dt; if (b.t > 0 && (b.t -= dt) <= 0) b.mesh.visible = true; }
     effects = effects.filter(e => (e.t -= dt) > 0 || (scene.remove(e.obj), false));
 
-    if (state === 'menu') { // slow orbit around the kart being customised
+    if (state === RaceState.Menu) { // slow orbit around the kart being customised
       const k = karts[edit];
       menuA += dt * 0.5;
       cams[0].position.set(k.pos.x + Math.sin(menuA) * 7, 3, k.pos.z + Math.cos(menuA) * 7);
@@ -652,7 +652,7 @@ export function mount(root: HTMLElement): () => void {
 
     const a = ac;
     if (a) voices.forEach((v, n) => {
-      const k = karts[n], on = state !== 'menu' && n < hs.length, s = Math.abs(k.speed), t = a.currentTime;
+      const k = karts[n], on = state !== RaceState.Menu && n < hs.length, s = Math.abs(k.speed), t = a.currentTime;
       v.out.pan.value = pan(k);
       // pitch kept above ~90 Hz so laptop speakers can actually play it
       v.engine.frequency.setTargetAtTime(90 + s * 4 + (k.boost > 0 ? 50 : 0), t, 0.05);
@@ -682,33 +682,33 @@ export function mount(root: HTMLElement): () => void {
     pad.onpointermove = e => pad.hasPointerCapture(e.pointerId) && steer(e);
     pad.onpointerup = pad.onpointercancel = () => { set(c.left, false); set(c.right, false); l.classList.remove('on'); r.classList.remove('on'); };
     for (const b of pv.querySelectorAll<HTMLButtonElement>('.acts button')) {
-      const a = b.dataset.a as 'item' | 'down' | 'drift';
+      const a = b.dataset.a as typeof Action.Item | typeof Action.Down | typeof Action.Drift;
       b.onpointerdown = e => {
         e.preventDefault(); touchDriving = true; b.classList.add('on');
-        if (a === 'item') useItem(karts[n]); else set(c[a], true);
+        if (a === Action.Item) useItem(karts[n]); else set(c[a], true);
       };
-      b.onpointerup = b.onpointercancel = () => { b.classList.remove('on'); if (a !== 'item') set(c[a], false); };
+      b.onpointerup = b.onpointercancel = () => { b.classList.remove('on'); if (a !== Action.Item) set(c[a], false); };
     }
   });
-  $('tRestart').onclick = () => state !== 'menu' && startRace();
+  $('tRestart').onclick = () => state !== RaceState.Menu && startRace();
   $('tGarage').onclick = menu;
   $('tMute').onclick = toggleMute;
 
   function hud() {
-    $('hud').style.display = state === 'menu' ? 'none' : '';
-    if (state === 'menu') return;
+    $('hud').style.display = state === RaceState.Menu ? 'none' : '';
+    if (state === RaceState.Menu) return;
     const order = ranked();
     humans().forEach((k, n) => {
       const q = (c: string) => pvs[n].querySelector<HTMLElement>(c)!;
       q('.lap').textContent = `Lap ${Math.min(Math.max(k.lap, 1), LAPS)}/${LAPS}`;
-      q('.item').textContent = k.item ? ICON[k.item] : '';
+      q('.item-slot').textContent = k.item ? ICON[k.item] : '';
       q('.wrong').style.display = k.wrongT > 0.7 ? 'block' : 'none';
       q('.pos').textContent = ord(order.indexOf(k) + 1);
     });
     $('time').textContent = fmt(raceTime);
     $('mute').style.display = cfg.muted ? '' : 'none';
     $('tMute').textContent = cfg.muted ? '🔇' : '🔈';
-    $('msg').textContent = state === 'count' ? String(Math.ceil(clock)) : state === 'race' && clock > 0 ? 'GO!' : '';
+    $('msg').textContent = state === RaceState.Count ? String(Math.ceil(clock)) : state === RaceState.Race && clock > 0 ? 'GO!' : '';
     mapCtx.clearRect(0, 0, 160, 160);
     mapCtx.strokeStyle = '#fff'; mapCtx.lineWidth = 4; mapCtx.beginPath();
     P.forEach((p, i) => i % 4 || mapCtx.lineTo(mx(p.x), mz(p.z))); mapCtx.closePath(); mapCtx.stroke();
@@ -722,17 +722,17 @@ export function mount(root: HTMLElement): () => void {
     $('endText').innerHTML = `<b>Race finished!</b><br>` +
       ranked().map((k, i) => `${ord(i + 1)} — ${k.human ? '<b>' : ''}${k.name.replace(/</g, '&lt;')}${k.human ? '</b>' : ''}` +
         (k.finished ? ' · ' + fmt(k.finishTime) : '')).join('<br>') +
-      `<br>${isHost() ? '<button data-end="again">Race again</button>' : 'Waiting for the host…'} <button data-end="garage">Garage</button>`;
-    const again = $('endText').querySelector<HTMLElement>('[data-end=again]');
+      `<br>${isHost() ? `<button data-end="${EndAction.Again}">Race again</button>` : 'Waiting for the host…'} <button data-end="${EndAction.Garage}">Garage</button>`;
+    const again = $('endText').querySelector<HTMLElement>(`[data-end="${EndAction.Again}"]`);
     if (again) again.onclick = startRace;
-    $('endText').querySelector<HTMLElement>('[data-end=garage]')!.onclick = menu;
+    $('endText').querySelector<HTMLElement>(`[data-end="${EndAction.Garage}"]`)!.onclick = menu;
     $('end').style.display = 'grid';
   }
 
   // --- garage menu (edits cfg.players[edit]) ---
-  const optRow = <T extends string>(id: string, labels: readonly T[], onPick: (i: number, label: T) => void) => labels.map((label, i) => {
+  const optRow = <T extends string>(id: string, labels: readonly T[], onPick: (label: T) => void) => labels.map(label => {
     const b = document.createElement('button'); b.className = 'opt'; b.textContent = label;
-    b.onclick = () => onPick(i, label);
+    b.onclick = () => onPick(label);
     $(id).append(b); return b;
   });
   const cName = $<HTMLInputElement>('cName'), cColor = $<HTMLInputElement>('cColor'), cHelmet = $<HTMLInputElement>('cHelmet');
@@ -763,14 +763,15 @@ export function mount(root: HTMLElement): () => void {
     b.onclick = () => { cfg.players[edit].skin = s; refreshMenu(); };
     $('cSkin').append(b);
   }
-  optRow('cStyle', KART_STYLES, (_, s) => { cfg.players[edit].style = s; refreshMenu(); });
-  optRow('cMap', MAP_NAMES, (_, m) => { cfg.map = m; buildTrack(); refreshMenu(); menu(); });
-  optRow('cPlayers', ['1 Player', '2 Players', 'Online'], i => {
-    cfg.two = i === 1; edit = 0;
-    if (i === 2) { initAudio(); goOnline(); } else { goOffline(); netErr = ''; }
+  optRow('cStyle', values(KartStyle), s => { cfg.players[edit].style = s; refreshMenu(); });
+  optRow('cMap', values(Track), m => { cfg.map = m; buildTrack(); refreshMenu(); menu(); });
+  optRow('cPlayers', values(PlayerMode), mode => {
+    cfg.two = mode === PlayerMode.Two; edit = 0;
+    if (mode === PlayerMode.Online) { initAudio(); goOnline(); } else { goOffline(); netErr = ''; }
     loadInputs(); refreshMenu(); menu();
   });
-  optRow('cEdit', ['Player 1', 'Player 2'], i => { edit = i; loadInputs(); refreshMenu(); });
+  // tab order = player order
+  optRow('cEdit', values(EditTab), tab => { edit = values(EditTab).indexOf(tab); loadInputs(); refreshMenu(); });
   $('go').onclick = startRace;
 
   loadInputs();
@@ -781,7 +782,7 @@ export function mount(root: HTMLElement): () => void {
     const dt = Math.min((now - last) / 1000, 0.05); last = now;
     update(dt); hud();
     // split screen: one viewport per human (the garage always uses the full screen)
-    const n = state === 'menu' ? 1 : humans().length, w = innerWidth / n, h = innerHeight;
+    const n = state === RaceState.Menu ? 1 : humans().length, w = innerWidth / n, h = innerHeight;
     renderer.setScissorTest(n > 1);
     for (let i = 0; i < n; i++) {
       cams[i].aspect = w / h; cams[i].updateProjectionMatrix();

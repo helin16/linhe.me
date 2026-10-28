@@ -1,6 +1,10 @@
 <!--
 Sync Impact Report
-- Version change: 2.1.0 → 2.2.0 (MINOR: Yarn replaces npm; new hosting rule on configuration)
+- Version change: 2.2.0 → 2.3.0 (MINOR: new principle VIII)
+  - Added principle: VIII. No Hard-Coded Values; Enums for Fixed Sets
+  - Hosting & Deployment Constraints: the no-hard-coded-addresses rule now points to VIII
+  - Follow-up: feature 002 (specs/002-no-hardcoded-values) brings the code in line
+- Previous amendment: 2.1.0 → 2.2.0 (MINOR: Yarn replaces npm; new hosting rule on configuration)
   - I: dependencies are locked by the committed `yarn.lock` (Yarn 4, pinned via `packageManager`)
   - VI: wording only ("each new dependency")
   - Development Workflow & Quality Gates: gates renamed to `yarn build`, `yarn test`, `yarn e2e`
@@ -120,6 +124,26 @@ Rationale: a small personal site stays maintainable only if it stays small.
 Rationale: games and relays are hard to check by eye on every device; automated unit and
 end-to-end tests keep "plays exactly as before" true as more games are added.
 
+### VIII. No Hard-Coded Values; Enums for Fixed Sets
+
+- Values that differ between environments (server addresses, hostnames, site URLs, ports, keys,
+  tokens, file system paths on a host) MUST come from configuration (`.env` / environment), never
+  from source, docs examples or scripts. Committed examples use placeholders.
+- Any value used in more than one place MUST be defined once as a named constant and imported
+  everywhere it is used.
+- Any fixed set of choices (tracks, kart styles, routes, message types, item kinds, game slugs)
+  MUST be one enum, declared as a const object plus its derived union type
+  (`export const X = { A: 'A' } as const; export type X = typeof X[keyof typeof X];`). The
+  TypeScript `enum` keyword is not used (it breaks `erasableSyntaxOnly` and `node --test`). Code
+  compares against the enum, never against string or number literals of its members.
+- One-off tuning values inside a game (speeds, colours, sizes, track points) MAY stay in that game's
+  own folder, as named constants or data tables, not repeated inline.
+- When the allowed values of an enum or a configuration value are not known from the spec or the
+  code, ask the owner instead of guessing. Adding an enum for values already known needs no sign-off.
+
+Rationale: one source of truth per value stops copies drifting apart (a track renamed in one file
+but not another) and keeps environment details out of a public repo.
+
 ## Hosting & Deployment Constraints
 
 - Production is one Vultr VPS. Caddy serves `dist/` for linhe.me with automatic HTTPS and reverse
@@ -130,8 +154,9 @@ end-to-end tests keep "plays exactly as before" true as more games are added.
 - Deploys MUST run through `yarn deploy` (`scripts/deploy.ts`): committed tree only, locked
   install, tests and build first, then a check that the live site serves the new build and its
   assets (and that a relay endpoint answers, once relays exist).
-- Server addresses, hostnames and site URLs MUST NOT be hard-coded in the repo. They come from a
-  git-ignored `.env`; the committed `.env.example` documents the keys with placeholder values.
+- Server addresses, hostnames and site URLs MUST NOT be hard-coded in the repo (principle VIII).
+  They come from a git-ignored `.env`; the committed `.env.example` documents the keys with
+  placeholder values.
 - Secrets, credentials and private keys MUST NEVER be committed; the repo is public. `.env`
   files are git-ignored.
 
@@ -167,4 +192,4 @@ end-to-end tests keep "plays exactly as before" true as more games are added.
   `/speckit-analyze` run checks changes against these principles. Runtime guidance lives in
   `README.md`.
 
-**Version**: 2.2.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-10-28
+**Version**: 2.3.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-10-28

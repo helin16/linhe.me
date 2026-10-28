@@ -1,21 +1,24 @@
 // Saved garage settings. Key and JSON shape are unchanged from the original game so old saves keep working.
-export const MAP_NAMES = ['Meadow', 'Desert', 'Snow', 'Neon'] as const;
-export const KART_STYLES = ['Classic', 'Buggy', 'Rocket'] as const;
-export type MapName = typeof MAP_NAMES[number];
-export type KartStyle = typeof KART_STYLES[number];
+import { isMember } from '../../shared/enum.ts';
+
+// values are stored in saves and sent online, so they must never change
+export const Track = { Meadow: 'Meadow', Desert: 'Desert', Snow: 'Snow', Neon: 'Neon' } as const;
+export type Track = typeof Track[keyof typeof Track];
+export const KartStyle = { Classic: 'Classic', Buggy: 'Buggy', Rocket: 'Rocket' } as const;
+export type KartStyle = typeof KartStyle[keyof typeof KartStyle];
+
 export type PlayerLook = { name: string; color: string; helmet: string; skin: string; style: KartStyle }; // name: max 10 characters
-export type Settings = { players: [PlayerLook, PlayerLook]; two: boolean; map: MapName; muted: boolean };
+export type Settings = { players: [PlayerLook, PlayerLook]; two: boolean; map: Track; muted: boolean };
 
 const KEY = 'tt-cfg';
 const HEX = /^#[0-9a-f]{6}$/i;
-export const isIn = <T extends string>(list: readonly T[], v: unknown): v is T => list.includes(v as T);
 
 export const defaults = (): Settings => ({
   players: [
-    { name: 'Player 1', color: '#ff4444', helmet: '#ffffff', skin: '#ffe0bd', style: 'Classic' },
-    { name: 'Player 2', color: '#22cc88', helmet: '#222222', skin: '#c68642', style: 'Buggy' },
+    { name: 'Player 1', color: '#ff4444', helmet: '#ffffff', skin: '#ffe0bd', style: KartStyle.Classic },
+    { name: 'Player 2', color: '#22cc88', helmet: '#222222', skin: '#c68642', style: KartStyle.Buggy },
   ],
-  two: false, map: 'Meadow', muted: false,
+  two: false, map: Track.Meadow, muted: false,
 });
 
 /** Parses a saved value; never throws. Anything malformed falls back to its default. */
@@ -32,7 +35,7 @@ export function loadSettings(raw: string | null): Settings {
   return {
     players: [fixLook(p1, d.players[0]), fixLook(p2, d.players[1])],
     two: s.two === true,
-    map: isIn(MAP_NAMES, s.map) ? s.map : d.map,
+    map: isMember(Track, s.map) ? s.map : d.map,
     muted: s.muted === true,
   };
 }
@@ -45,7 +48,7 @@ function fixLook(p: unknown, d: PlayerLook): PlayerLook {
     color: hex(o.color, d.color),
     helmet: hex(o.helmet, d.helmet),
     skin: hex(o.skin, d.skin),
-    style: isIn(KART_STYLES, o.style) ? o.style : d.style,
+    style: isMember(KartStyle, o.style) ? o.style : d.style,
   };
 }
 

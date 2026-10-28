@@ -12,7 +12,7 @@
 .tt.two #hud::after{content:'';position:absolute;top:0;bottom:0;left:50%;width:4px;margin-left:-2px;background:#000}
 .tt .lap{position:absolute;top:16px;left:16px;font-size:28px;font-weight:800}
 .tt .pos{position:absolute;bottom:16px;right:16px;font-size:64px;font-weight:900}
-.tt .item{position:absolute;top:16px;left:50%;transform:translateX(-50%);width:72px;height:72px;border:4px solid #fff;border-radius:14px;background:#0006;display:grid;place-items:center;font-size:40px}
+.tt .item-slot{position:absolute;top:16px;left:50%;transform:translateX(-50%);width:72px;height:72px;border:4px solid #fff;border-radius:14px;background:#0006;display:grid;place-items:center;font-size:40px}
 .tt .wrong{position:absolute;top:22%;left:50%;transform:translateX(-50%);display:none;white-space:nowrap;background:#d22;border:4px solid #fff;border-radius:12px;padding:8px 24px;font-size:40px;font-weight:900;animation:blink .6s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 .tt #time{position:absolute;top:100px;left:50%;transform:translateX(-50%);font-size:18px;background:#000a;padding:2px 10px;border-radius:6px}
@@ -24,7 +24,7 @@
 .tt #end{position:fixed;inset:0;display:none;place-items:center;background:#0008}
 .tt #end>div{background:#222;padding:24px 32px;border-radius:12px;font-size:20px;line-height:1.6}
 .tt button{font:inherit;padding:8px 20px;margin-top:12px;border-radius:8px;border:0;background:#ffcc00;cursor:pointer;touch-action:manipulation}
-.tt #menu{position:fixed;top:50%;left:16px;transform:translateY(-50%);background:#000b;padding:20px 24px;border-radius:14px;width:260px;max-height:calc(100vh - 72px);overflow:auto;display:none;flex-direction:column;gap:12px;touch-action:pan-y}
+.tt #garage-menu{position:fixed;top:50%;left:16px;transform:translateY(-50%);background:#000b;padding:20px 24px;border-radius:14px;width:260px;max-height:calc(100vh - 72px);overflow:auto;display:none;flex-direction:column;gap:12px;touch-action:pan-y}
 /* touch controls: shown on touch devices, one set per player pane */
 .tt .tc,.tt #tbar{display:none}
 .tt.touch .tc{display:block}
@@ -39,10 +39,10 @@
 .tt.touch .pv .pos{top:16px;bottom:auto;right:16px;left:auto;font-size:44px}
 .tt.touch #map{bottom:auto;top:150px;width:110px;height:110px}
 .tt.touch #help{display:none}
-.tt #menu h1{margin:0 0 4px;font-size:28px}
-.tt #menu label{display:flex;justify-content:space-between;align-items:center}
-.tt #menu input[type=text]{width:130px;font:inherit;padding:4px 8px;border-radius:6px;border:0}
-.tt #menu input[type=color]{width:56px;height:32px;border:0;padding:0;background:none;cursor:pointer}
+.tt #garage-menu h1{margin:0 0 4px;font-size:28px}
+.tt #garage-menu label{display:flex;justify-content:space-between;align-items:center}
+.tt #garage-menu input[type=text]{width:130px;font:inherit;padding:4px 8px;border-radius:6px;border:0}
+.tt #garage-menu input[type=color]{width:56px;height:32px;border:0;padding:0;background:none;cursor:pointer}
 .tt .sw{width:30px;height:30px;border-radius:50%;padding:0;margin:4px 4px 0 0;border:3px solid transparent}
 .tt .opt{background:#444;color:#fff;padding:6px 12px;margin:4px 4px 0 0}
 .tt .sw.on{border-color:#fff}.tt .opt.on{background:#ffcc00;color:#000}

@@ -1,6 +1,6 @@
 // Deploys the committed tree to the server, then checks the live site serves the new build.
 // Settings come from the environment or a git-ignored .env file (see .env.example):
-//   DEPLOY_TARGET  rsync destination for dist/, e.g. root@<server>:/srv/linhe.me/
+//   DEPLOY_TARGET  rsync destination for dist/, e.g. <user>@<server>:<web-root>/
 //   SITE_URL       the site's public address, e.g. https://<domain>/
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';

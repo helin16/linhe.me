@@ -43,8 +43,8 @@ normal. Online play returns with the new Node/TypeScript relay.
 ## Hosting and deploy
 
 The site runs on a VPS (Ubuntu) behind Cloudflare (proxied, SSL mode Full (strict)). Caddy serves
-`/srv/linhe.me` (a copy of `dist/`) with a Let's Encrypt certificate; its config is
-`/etc/caddy/Caddyfile` on the server.
+the web root (the folder in `DEPLOY_TARGET`, a copy of `dist/`) with a Let's Encrypt certificate;
+its site config lives in Caddy's config on the server.
 
 The server address and the site URL are not in the repo. Copy `.env.example` to `.env`
 (git-ignored) and fill in `DEPLOY_TARGET` and `SITE_URL`, then:
@@ -57,12 +57,12 @@ yarn deploy   # committed tree only: install, test, build, upload, then check th
 everything else first and `index.html` last (an interrupted deploy leaves the old page live), then
 checks that the live page names the new build's entry files and that every file in the build's
 `assets/` is served. It never deletes anything on the server: old `assets/` files stay so visitors
-with an older page open can still load its chunks (prune `/srv/linhe.me/assets` by hand if it ever
-grows large). There is no relay yet, so there is no relay endpoint to check.
+with an older page open can still load its chunks (prune old files in the web root's `assets/`
+by hand if it ever grows large). There is no relay yet, so there is no relay endpoint to check.
 
 The server accepts SSH with keys only. Ports 80/443 only accept Cloudflare's IP ranges (IPv4 and
-IPv6), so the site can't be reached around Cloudflare; `/etc/cron.daily/ufw-cloudflare` adds any
-new ranges Cloudflare publishes. Caddy renews the certificate itself through Cloudflare (Cloudflare
+IPv6), so the site can't be reached around Cloudflare; a daily job on the server adds any new ranges
+Cloudflare publishes to the firewall. Caddy renews the certificate itself through Cloudflare (Cloudflare
 passes `/.well-known/acme-challenge/` to port 80 without redirecting it). If renewal ever fails,
 Cloudflare shows error 526: check `journalctl -u caddy` on the server.
 
