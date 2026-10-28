@@ -40,7 +40,7 @@ export function loadSettings(raw: string | null): Settings {
   };
 }
 
-function fixLook(p: unknown, d: PlayerLook): PlayerLook {
+export function fixLook(p: unknown, d: PlayerLook): PlayerLook {
   const o = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
   const hex = (v: unknown, fallback: string) => typeof v === 'string' && HEX.test(v) ? v : fallback;
   return {

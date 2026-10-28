@@ -7,3 +7,6 @@ dist/
 !.env.example
 .yarn/install-state.gz
 .yarn/cache/
+dist-relay/
+test-results/
+playwright-report/

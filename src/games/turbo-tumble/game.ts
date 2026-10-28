@@ -2,7 +2,9 @@
 // the game now renders into `root` and mount() returns a cleanup that leaves the page as it found it.
 import * as THREE from 'three';
 import { isMember, values } from '../../shared/enum.ts';
-import { Action, EditTab, EndAction, Item, MsgType, PlayerMode, RaceState } from './enums.ts';
+import { CODE_LENGTH, NEW_ROOM } from '../../../relay/protocol.ts';
+import { Action, EditTab, EndAction, Item, MsgType, OnlineAction, OnlineState, PlayerMode, RaceState } from './enums.ts';
+import { allowedFrom, connect, joinLink, parseGameMessage, roomFromUrl, SLOTS, type Msg, type NetState } from './net.ts';
 import { KartStyle, loadSaved, saveSettings, Track, type PlayerLook } from './settings.ts';
 
 type Vec = THREE.Vector3;
@@ -11,8 +13,6 @@ type Look = { name: string; color: number; helmet: number; skin: number; style: 
 type Input = { accel: number; steer: number; drift: boolean };
 type Prop = [THREE.BufferGeometry, THREE.Material, number];
 type MapDef = { pts: [number, number][]; sky: number; ground: number; road: number; curb: [number, number]; wall: [number, number]; light: number; glow?: boolean; prop: () => Prop[] };
-// x, z, heading, speed, lap, idx, body rotation, spark, finished, finish time
-type NetState = [number, number, number, number, number, number, number, number, number, number];
 type Kart = Look & {
   pn: number; g: THREE.Group; m: THREE.Group; spark: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   pos: Vec; idx: number; lap: number; lat: number; speed: number; h: number; camH: number;
@@ -21,16 +21,7 @@ type Kart = Look & {
   net: NetState | null; netAt: number; human: boolean; remote: boolean; ai: boolean;
 };
 type Voice = { out: StereoPannerNode; engine: OscillatorNode; engineGain: GainNode; screechGain: GainNode };
-type Net = { slot: number; peers: Set<number>; profiles: Record<number, PlayerLook>; sendT?: number };
-type Msg =
-  | { t: typeof MsgType.Hello; slot: number; peers: number[] }
-  | { t: typeof MsgType.Join | typeof MsgType.Leave; slot: number }
-  | { t: typeof MsgType.Me; from: number; p: PlayerLook }
-  | { t: typeof MsgType.Start; map: string }
-  | { t: typeof MsgType.State; k: [number, ...NetState][] }
-  | { t: typeof MsgType.Goo; x: number; z: number; id: string }
-  | { t: typeof MsgType.Pop; id: string }
-  | { t: typeof MsgType.Zap; by: number; to: number };
+type Net = { slot: number; peers: Set<number>; profiles: Record<number, PlayerLook>; code: string; sendT?: number };
 
 const MARKUP = `
 <div id="hud">
@@ -58,6 +49,13 @@ const MARKUP = `
   <div id="stats"></div>
   <div>Track<br><span id="cMap"></span></div>
   <div id="keys"></div>
+  <div id="online">
+    <div id="onlineJoin">
+      <button class="opt" data-online="${OnlineAction.Create}">Create room</button>
+      <div class="join-row"><input type="text" id="cCode" maxlength="${CODE_LENGTH}" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Room code" aria-label="Room code"><button class="opt" data-online="${OnlineAction.Join}">Join</button></div>
+    </div>
+    <div id="onlineRoom">Room <span id="roomCode"></span><br><button class="opt" data-online="${OnlineAction.Copy}">Copy link</button><button class="opt" data-online="${OnlineAction.Leave}">Leave room</button></div>
+  </div>
   <div id="netInfo"></div>
   <button id="go">Start race</button>
 </div>
@@ -84,6 +82,7 @@ const CONTROLS: Record<Action, string>[] = [
 ];
 const ICON: Record<Item, string> = {[Item.Turbo]: '🚀', [Item.Goo]: '🟢', [Item.Zap]: '⚡'};
 const ITEMS = values(Item);
+const MAX_PUDDLES = 24; // far more than a race leaves on the track
 
 export function mount(root: HTMLElement): () => void {
   const listening = new AbortController(), signal = listening.signal;
@@ -313,13 +312,14 @@ export function mount(root: HTMLElement): () => void {
   const humans = () => karts.slice(0, cfg.two ? 2 : 1);
   const hex = (s: string) => parseInt(String(s).slice(1), 16);
 
-  // --- online: a relay passes JSON between up to 4 browsers. Server slots 0-3 are grid spots;
+  // --- online: the relay passes JSON between up to 4 browsers in a room. Slots 0-3 are grid spots;
   // the local player is always karts[0]. Each browser drives its own kart; the host (lowest slot) drives the AI ---
-  let es: EventSource | null = null, net: Net | null = null, netErr = ''; // net is set once connected
-  const slotOf = (n: number) => net ? (n + net.slot) % 4 : n;
-  const kartOf = (s: number) => karts[(s - net!.slot + 4) % 4];
-  const isHost = () => !net || net.slot < Math.min(4, ...net.peers);
-  const send = (m: object) => net && fetch('send', {method: 'POST', body: JSON.stringify({...m, from: net.slot})}).catch(() => {});
+  let conn: ReturnType<typeof connect> | null = null, net: Net | null = null, netErr = ''; // net is set once in a room
+  let online: OnlineState = OnlineState.Idle, onlineMode = false; // onlineMode: the Online option is picked
+  const slotOf = (n: number) => net ? (n + net.slot) % SLOTS : n;
+  const kartOf = (s: number) => karts[(s - net!.slot + SLOTS) % SLOTS];
+  const isHost = () => !net || net.slot < Math.min(SLOTS, ...net.peers);
+  const send = (m: object) => { if (net) conn?.send(m); }; // the relay adds our slot as `from`
   const sendProfile = () => send({t: MsgType.Me, p: cfg.players[0]});
   // human = a person drives it (here or elsewhere); remote = its state arrives over the network
   function roles() {
@@ -349,6 +349,7 @@ export function mount(root: HTMLElement): () => void {
     const p = new THREE.Mesh(puddleG, puddleM);
     p.position.set(x, 0.06, z); p.userData.id = id;
     scene.add(p); puddles.push(p);
+    while (puddles.length > MAX_PUDDLES) scene.remove(puddles.shift()!); // a flood of goo can't pile up
   }
   function zapFx(a: Kart, b: Kart) {
     const geo = new THREE.BufferGeometry().setFromPoints([a.pos.clone().setY(1.5), b.pos.clone().setY(1.5)]);
@@ -455,7 +456,7 @@ export function mount(root: HTMLElement): () => void {
 
   function onNet(m: Msg) {
     if (m.t === MsgType.Hello) {
-      net = {slot: m.slot, peers: new Set(m.peers), profiles: {}};
+      net = {slot: m.slot, peers: new Set(m.peers), profiles: {}, code: m.code};
       edit = 0; loadInputs(); refreshMenu(); menu(); // refreshMenu also sends our profile
     }
     const n = net;
@@ -480,23 +481,35 @@ export function mount(root: HTMLElement): () => void {
     }
     netInfo();
   }
-  function goOnline() {
-    if (es) return;
-    netErr = '';
-    const src = es = new EventSource('events');
-    es.onmessage = e => { try { onNet(JSON.parse(e.data)); } catch (err) { console.warn('bad net message', err); } };
-    es.onerror = () => {
-      if (es !== src || src.readyState !== EventSource.CLOSED) return; // CONNECTING = auto-retry after a dropout
-      goOffline(); netErr = "Online play isn't available here (it needs the game server), or the room is full."; netInfo();
-    };
+  /** Creates (room = NEW_ROOM) or joins a room. */
+  function openRoom(room: string) {
+    if (conn) return;
+    netErr = ''; online = OnlineState.Connecting;
+    conn = connect(room, {
+      hello: h => { online = OnlineState.InRoom; onNet(h); },
+      message: m => { // peers' data is checked, then limited to what that peer may do
+        const msg = parseGameMessage(m), ok = msg && net && allowedFrom(msg, net.slot, net.peers);
+        if (ok) onNet(ok);
+      },
+      closed: text => { conn = net = null; online = OnlineState.Error; netErr = text; roles(); applyCfg(); menu(); netInfo(); },
+    });
+    netInfo();
   }
-  function goOffline() { if (es) { es.close(); es = net = null; } }
+  function leaveRoom() {
+    conn?.close();
+    conn = net = null; online = OnlineState.Idle; netErr = '';
+    roles(); applyCfg(); netInfo();
+  }
   function netInfo() {
-    $('netInfo').innerHTML = !es ? netErr : !net ? 'Connecting…'
-      : `Online as P${net.slot + 1} · ${net.peers.size + 1}/4 players<br>${isHost() ? 'You are the host: pick a track and start' : 'The host picks the track and starts'}`;
+    $('netInfo').innerHTML = !onlineMode ? '' : online === OnlineState.Connecting ? 'Connecting…' : !net ? netErr
+      : `Online as P${net.slot + 1} · ${net.peers.size + 1}/${SLOTS} players<br>${isHost() ? 'You are the host: pick a track and start' : 'The host picks the track and starts'}`;
+    $('online').style.display = onlineMode ? '' : 'none';
+    $('onlineJoin').style.display = net ? 'none' : '';
+    $('onlineRoom').style.display = net ? '' : 'none';
+    $('roomCode').textContent = net ? net.code : '';
     $<HTMLButtonElement>('go').disabled = !isHost();
     $('go').textContent = isHost() ? 'Start race' : 'Waiting for host…';
-    const mode = es ? PlayerMode.Online : cfg.two ? PlayerMode.Two : PlayerMode.One;
+    const mode = onlineMode ? PlayerMode.Online : cfg.two ? PlayerMode.Two : PlayerMode.One;
     [...$('cPlayers').children].forEach(b => b.classList.toggle('on', b.textContent === mode));
   }
 
@@ -767,9 +780,25 @@ export function mount(root: HTMLElement): () => void {
   optRow('cMap', values(Track), m => { cfg.map = m; buildTrack(); refreshMenu(); menu(); });
   optRow('cPlayers', values(PlayerMode), mode => {
     cfg.two = mode === PlayerMode.Two; edit = 0;
-    if (mode === PlayerMode.Online) { initAudio(); goOnline(); } else { goOffline(); netErr = ''; }
+    onlineMode = mode === PlayerMode.Online;
+    if (onlineMode) initAudio(); else leaveRoom();
     loadInputs(); refreshMenu(); menu();
   });
+  const cCode = $<HTMLInputElement>('cCode');
+  for (const b of $('online').querySelectorAll<HTMLButtonElement>('[data-online]')) b.onclick = () => {
+    const action = b.dataset.online;
+    if (action === OnlineAction.Create) openRoom(NEW_ROOM);
+    if (action === OnlineAction.Join && cCode.value.trim()) openRoom(cCode.value);
+    if (action === OnlineAction.Leave) leaveRoom();
+    if (action === OnlineAction.Copy && net) {
+      const link = joinLink(location.origin, net.code);
+      const show = () => { $('netInfo').textContent = link; }; // no clipboard: show it to copy by hand
+      navigator.clipboard ? navigator.clipboard.writeText(link).catch(show) : show();
+    }
+  };
+  // a join link: pick Online and fill in the code, so joining is one tap
+  const linkedRoom = roomFromUrl(location.href);
+  if (linkedRoom) { onlineMode = true; cfg.two = false; cCode.value = linkedRoom; } // online is one player per device
   // tab order = player order
   optRow('cEdit', values(EditTab), tab => { edit = values(EditTab).indexOf(tab); loadInputs(); refreshMenu(); });
   $('go').onclick = startRace;
@@ -797,7 +826,7 @@ export function mount(root: HTMLElement): () => void {
     renderer.dispose();
     renderer.forceContextLoss();
     ac?.close();
-    goOffline();
+    conn?.close();
     if (viewport && siteViewport !== undefined) viewport.content = siteViewport;
     root.innerHTML = '';
     root.classList.remove('tt', 'two', 'touch');

@@ -15,8 +15,13 @@ yarn install --immutable   # install exactly what yarn.lock says
 yarn dev                   # dev server with hot reload
 yarn build                 # type-check, then build the site into dist/
 yarn preview               # serve dist/ at http://localhost:4173
-yarn test                  # unit tests (node --test)
+yarn relay                 # the online relay on localhost (dev and preview pass /relay to it)
+yarn test                  # unit + relay end-to-end tests, 100% function coverage for relay code
+yarn e2e:local             # browser tests here: Chromium and WebKit/iPad (Playwright)
+yarn e2e                   # all three engines incl. Firefox (what CI runs; Firefox won't start on every Mac)
 ```
+
+Before the first `yarn e2e`, install the browsers once: `yarn playwright install chromium webkit firefox`.
 
 `dist/` is the whole publishable site; nothing else in the repo is served.
 
@@ -26,6 +31,8 @@ yarn test                  # unit tests (node --test)
 - `src/shared/`: site header/footer and the small router
 - `src/games/index.ts`: the one games list, read by both pages and the router
 - `src/games/<slug>/`: one self-contained folder per game
+- `relay/`: the online relay (server code, never served); `relay/protocol.ts` is the wire format games import
+- `e2e/`: browser end-to-end tests
 
 ## Add a game
 
@@ -35,10 +42,18 @@ yarn test                  # unit tests (node --test)
 2. Add one entry to `src/games/index.ts`. The game appears on the home and games pages at
    `/games/<slug>/`, loaded only when opened.
 
-## Turbo Tumble online mode
+## Online play
 
-Not available yet: choosing Online shows a message, and 1 player and 2-player split-screen work as
-normal. Online play returns with the new Node/TypeScript relay.
+In Turbo Tumble, choose Online, then Create room: the game shows a 4-character room code and a
+Copy link button. Friends open the link (or choose Online and type the code) and tap Join; up to 4
+players race, and the first player is the host who picks the track and starts.
+
+The relay ([`relay/`](relay/), specs in `specs/003-online-relay`) is game-agnostic: rooms live in
+memory per game and code, messages only reach the same room, and nothing about players is kept or
+logged once a room empties. Its limits come from `RELAY_*` settings (defaults in
+[`relay/config.ts`](relay/config.ts), keys in `.env.example`). The game finds it at the same site's
+`/relay/` unless `VITE_RELAY_URL` says otherwise; a relay on another host also needs the site's
+Content-Security-Policy `connect-src` to allow it.
 
 ## Hosting and deploy
 
@@ -46,19 +61,26 @@ The site runs on a VPS (Ubuntu) behind Cloudflare (proxied, SSL mode Full (stric
 the web root (the folder in `DEPLOY_TARGET`, a copy of `dist/`) with a Let's Encrypt certificate;
 its site config lives in Caddy's config on the server.
 
-The server address and the site URL are not in the repo. Copy `.env.example` to `.env`
-(git-ignored) and fill in `DEPLOY_TARGET` and `SITE_URL`, then:
+The server address, the site URL and the relay folder are not in the repo. Copy `.env.example`
+to `.env` (git-ignored) and fill in `DEPLOY_TARGET`, `SITE_URL` and `DEPLOY_RELAY_DIR`, then:
 
 ```sh
-yarn deploy   # committed tree only: install, test, build, upload, then check the live site
+yarn deploy   # committed, pushed tree only: tests, browser tests, CI must have passed, then relay and site, each checked
 ```
 
-[`scripts/deploy.ts`](scripts/deploy.ts) refuses to run with uncommitted changes, uploads
-everything else first and `index.html` last (an interrupted deploy leaves the old page live), then
-checks that the live page names the new build's entry files and that every file in the build's
-`assets/` is served. It never deletes anything on the server: old `assets/` files stay so visitors
-with an older page open can still load its chunks (prune old files in the web root's `assets/`
-by hand if it ever grows large). There is no relay yet, so there is no relay endpoint to check.
+[`scripts/deploy.ts`](scripts/deploy.ts) refuses to run with uncommitted or unpushed changes, runs the
+tests and the local browser tests, and waits for the [`ci`](.github/workflows/ci.yml) workflow (all
+three browsers, on Linux) to pass for that commit. It then ships the relay first: the bundle
+(`dist-relay/relay.mjs`) and its service file go to `DEPLOY_RELAY_DIR`, the hardened `linhe-relay`
+systemd service (restarts on failure) is linked and restarted, and the live relay must answer with a
+room code. Only then does the site go up: everything else first and `index.html` last (an
+interrupted deploy leaves the old page live), followed by a check that the live page names the new
+build's entry files and every file in the build's `assets/` is served. It never deletes anything on
+the server: old `assets/` files stay so visitors with an older page open can still load its chunks
+(prune old files in the web root's `assets/` by hand if it ever grows large).
+
+One-time server setup for the relay: install Node 24 or later (Ubuntu 26.10's `nodejs` package is 24) and add a
+`handle /relay/* { reverse_proxy 127.0.0.1:<RELAY_PORT> }` route to Caddy's site config.
 
 The server accepts SSH with keys only. Ports 80/443 only accept Cloudflare's IP ranges (IPv4 and
 IPv6), so the site can't be reached around Cloudflare; a daily job on the server adds any new ranges

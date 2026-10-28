@@ -9,10 +9,12 @@ import { Action, EditTab, EndAction, Item, MsgType, PlayerMode, RaceState } from
 import { KartStyle, Track } from './games/turbo-tumble/settings.ts';
 import { values } from './shared/enum.ts';
 import { Route } from './shared/routes.ts';
+import { RelayMsg } from '../relay/protocol.ts';
 
-const enums: Record<string, Record<string, string>> = { Route, GameSlug, Track, KartStyle, RaceState, MsgType, Item, Action, PlayerMode, EditTab, EndAction };
+const enums: Record<string, Record<string, string>> = { Route, GameSlug, Track, KartStyle, RaceState, MsgType, Item, Action, PlayerMode, EditTab, EndAction, RelayMsg };
 // the one file allowed to hold each enum's definition
 const home: Record<string, string> = {
+  RelayMsg: '../relay/protocol.ts',
   Route: 'shared/routes.ts', GameSlug: 'games/index.ts', Track: 'games/turbo-tumble/settings.ts', KartStyle: 'games/turbo-tumble/settings.ts',
   ...Object.fromEntries(['RaceState', 'MsgType', 'Item', 'Action', 'PlayerMode', 'EditTab', 'EndAction'].map(n => [n, 'games/turbo-tumble/enums.ts'])),
 };
@@ -20,13 +22,15 @@ const home: Record<string, string> = {
 const allowed: Record<string, string[]> = {
   'Player 1': ['games/turbo-tumble/settings.ts'], // default player name, not the edit tab (research R5)
   'Player 2': ['games/turbo-tumble/settings.ts'],
-  '/': ['shared/router.tsx'], // URL path syntax (trailing slashes), not the home route
+  '/': ['shared/router.tsx', '../relay/protocol.ts'], // URL path syntax (slashes), not the home route
 };
 
 const src = fileURLToPath(new URL('.', import.meta.url));
-const files = readdirSync(src, { recursive: true, encoding: 'utf8' })
-  .map(f => f.split(sep).join('/'))
+// the site's code and the relay's (paths relative to src/)
+const list = (dir: string, prefix: string) => readdirSync(join(src, dir), { recursive: true, encoding: 'utf8' })
+  .map(f => prefix + f.split(sep).join('/'))
   .filter(f => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
+const files = [...list('.', ''), ...list('../relay', '../relay/')];
 // an enum definition (`export const Name = { ... } as const`), blanked only in that enum's own file
 const definition = (name: string) => new RegExp(`export const ${name} = \\{[^}]*\\} as const`, 'g');
 // the value as a whole quoted string, or at the start of a template string (`/games/${slug}`)

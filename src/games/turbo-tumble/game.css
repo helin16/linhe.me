@@ -49,3 +49,8 @@
 .tt button:disabled{opacity:.5;cursor:default}
 .tt #netInfo{font-size:14px;line-height:1.4;color:#ffcc00}
 .tt #stats,.tt #keys{font-family:ui-monospace,monospace;font-size:13px;line-height:1.5}
+/* online panel (feature 003) */
+.tt #online .join-row{display:flex;gap:6px;align-items:center;margin-top:4px}
+.tt #garage-menu #cCode{width:96px;text-transform:uppercase;letter-spacing:.15em;font-family:ui-monospace,monospace}
+.tt #online .join-row .opt{margin:0}
+.tt #roomCode{font:800 26px ui-monospace,monospace;letter-spacing:.15em;color:#ffcc00}

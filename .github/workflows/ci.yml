@@ -1,0 +1,21 @@
+# Unit, relay end-to-end and browser tests (Chromium, Firefox, WebKit/iPad) on every push.
+# `yarn deploy` refuses to ship a commit unless this workflow passed for it.
+name: ci
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm i -g corepack && corepack enable
+      - run: yarn install --immutable
+      - run: yarn test
+      - run: yarn build:relay
+      - run: yarn playwright install --with-deps chromium webkit firefox
+      - run: yarn e2e

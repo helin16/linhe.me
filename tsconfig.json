@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src", "scripts", "vite.config.ts"]
+  "include": ["src", "scripts", "relay", "e2e", "vite.config.ts", "vite.relay.config.ts", "playwright.config.ts"]
 }
