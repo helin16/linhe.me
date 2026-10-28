@@ -51,10 +51,12 @@ export function startRelay(config: Config, log?: (line: string) => void) {
     ws.on('error', onSocketError);
     if (!addresses.add(address)) return ws.close(CloseCode.Busy);
     ws.on('close', () => { addresses.remove(address); missed.delete(ws); });
+    let gone = false;
     // a peer that stops reading would make us buffer the room's traffic without end: drop it instead
     const peer = {
       send: (data: string) => ws.bufferedAmount > config.maxBuffer ? ws.terminate() : ws.send(data),
-      close: (code: number) => ws.close(code),
+      // the host closed the room: it's gone and its code is free, so this socket must not touch rooms again
+      close: (code: number) => { gone = true; ws.close(code); },
     };
     let code: string, room: Exclude<ReturnType<typeof rooms.join>, string>;
     if ('create' in target) {
@@ -76,6 +78,7 @@ export function startRelay(config: Config, log?: (line: string) => void) {
     ws.on('pong', () => missed.set(ws, 0));
     ws.send(JSON.stringify({ t: RelayMsg.Hello, ...room, code }));
     ws.on('message', (data, binary) => {
+      if (gone) return;
       if ((data as Buffer).byteLength > config.maxMessage) return ws.close(CloseCode.TooBig);
       if (!allow()) return ws.close(CloseCode.TooMany);
       let msg: unknown;
@@ -86,7 +89,7 @@ export function startRelay(config: Config, log?: (line: string) => void) {
       if (isRelayMsg(t)) return ws.close(CloseCode.BadRequest); // a faked hello/join/leave/room
       rooms.broadcast(target.game, code, slot, msg);
     });
-    ws.on('close', () => rooms.leave(target.game, code, slot));
+    ws.on('close', () => gone || rooms.leave(target.game, code, slot));
   }
 
   // pings keep idle connections open through Cloudflare (it drops them after 100 s) and find dead ones
