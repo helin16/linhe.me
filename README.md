@@ -52,6 +52,10 @@ the race starts with computer karts filling the empty spots. After a race the ro
 with a fresh countdown. Rooms still have a 4-character code and a Copy link button: opening the
 link joins straight away. 1 Player and 2 Players modes race 4 karts as before.
 
+In the waiting room everyone sees who has joined (number, kart colour, name, host) and how many
+computer karts will fill the rest. During every race a standings panel lists each kart in order,
+with your own row highlighted; on phones it shows the top 3 plus your row.
+
 The relay ([`relay/`](relay/), specs in `specs/003-online-relay` and `specs/004-online-lobby`) is
 game-agnostic: rooms live in memory per game and code, messages only reach the same room, and
 nothing about players is kept or logged once a room empties. Rooms have a size (up to

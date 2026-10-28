@@ -66,4 +66,21 @@
 .tt #lobby #cCode{width:96px;text-transform:uppercase;letter-spacing:.15em;font:inherit;font-family:ui-monospace,monospace;padding:4px 8px;border-radius:6px;border:0}
 .tt #roomName{color:#ffcc00}
 .tt #countdown{font:800 22px ui-monospace,monospace;margin:4px 0}
+/* live standings (feature 005): top-left under the lap counter; on touch, under the button bar */
+.tt #standings{position:absolute;top:58px;left:16px;margin:0;padding:6px 10px;list-style:none;background:#0006;border-radius:8px;font-size:14px;line-height:1.45;pointer-events:none;max-width:210px}
+.tt #standings li,.tt #roster li{display:flex;gap:6px;align-items:center;white-space:nowrap}
+.tt #standings .place{min-width:1.4em;text-align:right;font-weight:800}
+.tt #standings .name,.tt #roster .name{overflow:hidden;text-overflow:ellipsis}
+.tt #standings .time{margin-left:auto;padding-left:6px;opacity:.8}
+.tt #standings li.mine{color:#ffcc00;font-weight:800}
+.tt .dot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 0 1px #0008}
+.tt.touch #standings{top:112px;font-size:13px}
+@media (orientation:portrait){.tt.touch #map{top:220px}} /* below the standings panel */
+/* who's in the waiting room */
+.tt #roster{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:3px}
+.tt #roster .dot{width:14px;height:14px}
+.tt #roster .slot{font-weight:800;min-width:2.2em}
+.tt #roster .tag{font-size:11px;padding:0 5px;border-radius:4px;background:#444}
+.tt #roster li.mine .tag:last-child{background:#ffcc00;color:#000}
+.tt #botCount{font-size:13px;opacity:.8}
 

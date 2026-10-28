@@ -1,12 +1,12 @@
 // Shared steps for the online browser tests.
-import { expect, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { expect, type Browser, type BrowserContextOptions, type Page, type TestInfo } from '@playwright/test';
 import { gameRoute } from '../src/shared/routes.ts';
 import { GameSlug } from '../src/games/index.ts';
 
 export const GAME = gameRoute(GameSlug.TurboTumble);
 
-export async function player(browser: Browser, info: TestInfo, path = GAME) {
-  const context = await browser.newContext({ ...info.project.use }); // same device as the project (iPad: touch)
+export async function player(browser: Browser, info: TestInfo, path = GAME, device: BrowserContextOptions = {}) {
+  const context = await browser.newContext({ ...info.project.use, ...device }); // the project's device (iPad: touch), or one given
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -28,3 +28,9 @@ export async function host(page: Page, size = 4) {
 
 /** Back to the garage mid-race (the G key; the on-screen button only shows on touch screens). */
 export const garage = (page: Page) => page.keyboard.press('KeyG');
+
+/** Starts a race from the garage and waits for the lap counter. */
+export async function race(page: Page) {
+  await page.getByRole('button', { name: 'Start race' }).click();
+  await expect(page.locator('.lap').first()).toHaveText('Lap 1/3', { timeout: 5000 });
+}

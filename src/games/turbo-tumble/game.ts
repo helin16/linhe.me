@@ -6,6 +6,7 @@ import { CODE_LENGTH, NEW_ROOM, RelayMsg, type RoomInfo } from '../../../relay/p
 import { Action, EditTab, EndAction, Item, MsgType, OnlineAction, OnlineState, PlayerMode, RaceState } from './enums.ts';
 import { allowedFrom, connect, deadlineFrom, fetchRooms, joinLink, LIST_POLL_MS, MAX_SLOTS, NetText, parseGameMessage, ROOM_SIZES, roomFromUrl, secondsLeft, type Msg, type NetState } from './net.ts';
 import { KartStyle, loadSaved, saveSettings, Track, type PlayerLook } from './settings.ts';
+import { COMPACT_MEDIA, computerKarts, rosterRows, standingRows, type RosterRow, type Standing } from './standings.ts';
 
 type Vec = THREE.Vector3;
 type StyleDef = { speed: number; turn: number; off: number; body: [number, number, number]; wheel: number; bars: [number, number, number] };
@@ -37,6 +38,7 @@ const MARKUP = `
   <div id="time"></div><div id="mute">🔇 Muted — press M</div>
   <div id="msg"></div>
   <canvas id="map" width="160" height="160"></canvas>
+  <ol id="standings" aria-label="Standings"></ol>
   <div id="help">↑↓←→ / WASD drive<br>Space (hold + steer) drift → boost<br>E use item · R restart<br>G garage · M mute</div>
 </div>
 <div id="garage-menu">
@@ -55,6 +57,7 @@ const MARKUP = `
     <div id="onlineRoom">
       <b id="roomName"></b> · <span id="roomCount"></span><div id="countdown" role="timer"></div>
       <div id="roomInfo"></div>
+      <ul id="roster" aria-label="In this room"></ul><div id="botCount"></div>
       Code <span id="roomCode"></span> <button class="opt" data-online="${OnlineAction.Copy}">Copy link</button>
       <button class="opt" data-online="${OnlineAction.Cancel}">Cancel</button><button class="opt" data-online="${OnlineAction.Leave}">Leave</button>
     </div>
@@ -411,6 +414,7 @@ export function mount(root: HTMLElement): () => void {
 
   // --- race state ---
   let state: RaceState = RaceState.Menu, clock = 0, raceTime = 0, menuA = 0, edit = 0, leadProg = 0;
+  let standingsKey = '', rosterKey = ''; // what the standings panel and the roster last drew (feature 005)
   const progress = (k: Kart) => k.lap * N + k.idx;
   const ranked = () => [...karts].sort((a, b) =>
     (a.finished && b.finished) ? a.finishTime - b.finishTime : (+b.finished - +a.finished) || progress(b) - progress(a));
@@ -432,7 +436,7 @@ export function mount(root: HTMLElement): () => void {
     boxes.forEach(b => { b.t = 0; b.mesh.visible = true; });
     puddles.forEach(p => scene.remove(p)); puddles = [];
     effects.forEach(e => scene.remove(e.obj)); effects = [];
-    state = RaceState.Count; clock = 3; raceTime = 0;
+    state = RaceState.Count; clock = 3; raceTime = 0; standingsKey = '';
     root.classList.toggle('two', cfg.two);
     $('end').style.display = 'none';
     (document.activeElement as HTMLElement | null)?.blur(); // so Space doesn't re-press a focused button
@@ -571,6 +575,13 @@ export function mount(root: HTMLElement): () => void {
       $('countdown').textContent = net.open ? `Starts in ${secondsLeft(net.deadline)}s` : 'Racing';
       $('roomInfo').textContent = `Online as P${net.slot + 1} · ${isHost() ? 'You are the host: pick a track, start when ready' : 'The host picks the track'}`;
       $('roomCode').textContent = net.code;
+      const roster = rosterRows(net.slot, net.peers, net.profiles, cfg.players[0]), key = JSON.stringify([net.size, roster]);
+      if (key !== rosterKey) { // netInfo runs on every network message, many a second mid-race
+        rosterKey = key;
+        $('roster').replaceChildren(...roster.map(rosterItem));
+        const bots = computerKarts(net.size, net.peers.size + 1);
+        $('botCount').textContent = bots ? `+${bots} computer karts` : '';
+      }
       root.querySelector<HTMLElement>(`[data-online="${OnlineAction.Cancel}"]`)!.style.display = isHost() ? '' : 'none';
       root.querySelector<HTMLElement>(`[data-online="${OnlineAction.Leave}"]`)!.style.display = isHost() ? 'none' : '';
     }
@@ -774,10 +785,43 @@ export function mount(root: HTMLElement): () => void {
   $('tGarage').onclick = menu;
   $('tMute').onclick = toggleMute;
 
+  // the standings panel: rebuilt only when the order, a finish, a name or colour (a late profile) or the screen size
+  // changes (hud() runs every frame)
+  const compact = matchMedia(COMPACT_MEDIA);
+  const colorHex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+  // a coloured dot and text spans; text goes in as text, never markup (names are players' own)
+  function rowItem(dot: string, ...texts: [cls: string, text: string][]) {
+    const li = document.createElement('li'), d = document.createElement('i');
+    d.className = 'dot'; d.style.background = dot;
+    li.append(d, ...texts.map(([cls, text]) => Object.assign(document.createElement('span'), {className: cls, textContent: text})));
+    return li;
+  }
+  function standings(order: Kart[]) {
+    const key = `${+compact.matches}:${order.map(k => `${k.pn}${k.finished ? 'f' : ''}${k.color}${k.name}`).join('|')}`;
+    if (key === standingsKey) return;
+    standingsKey = key;
+    const hs = humans(), all: Standing[] = order.map((k, i) =>
+      ({place: i + 1, name: k.name, color: colorHex(k.color), local: hs.includes(k), time: k.finished ? fmt(k.finishTime) : null}));
+    const rows = standingRows(all, compact.matches);
+    $('standings').replaceChildren(...rows.map(r => {
+      const li = rowItem(r.color, ['name', r.name], ['time', r.time ?? '']);
+      li.prepend(Object.assign(document.createElement('span'), {className: 'place', textContent: String(r.place)}));
+      li.classList.toggle('mine', r.local);
+      return li;
+    }));
+  }
+  const rosterItem = (r: RosterRow) => {
+    const li = rowItem(r.color, ['slot', `P${r.slot + 1}`], ['name', r.name], ...(r.host ? [['tag', 'host'] as [string, string]] : []),
+      ...(r.you ? [['tag', 'you'] as [string, string]] : []));
+    li.classList.toggle('mine', r.you);
+    return li;
+  };
+
   function hud() {
     $('hud').style.display = state === RaceState.Menu ? 'none' : '';
     if (state === RaceState.Menu) return;
     const order = ranked();
+    standings(order);
     humans().forEach((k, n) => {
       const q = (c: string) => pvs[n].querySelector<HTMLElement>(c)!;
       q('.lap').textContent = `Lap ${Math.min(Math.max(k.lap, 1), LAPS)}/${LAPS}`;
@@ -793,7 +837,7 @@ export function mount(root: HTMLElement): () => void {
     mapCtx.strokeStyle = '#fff'; mapCtx.lineWidth = 4; mapCtx.beginPath();
     P.forEach((p, i) => i % 4 || mapCtx.lineTo(mx(p.x), mz(p.z))); mapCtx.closePath(); mapCtx.stroke();
     for (const k of [...karts].reverse()) {
-      mapCtx.fillStyle = '#' + k.color.toString(16).padStart(6, '0');
+      mapCtx.fillStyle = colorHex(k.color);
       mapCtx.beginPath(); mapCtx.arc(mx(k.pos.x), mz(k.pos.z), k.human ? 6 : 4, 0, 7); mapCtx.fill();
     }
   }

@@ -21,9 +21,9 @@ export const games: GameEntry[] = [
     name: 'Turbo Tumble',
     summary: '3D kart racing with drifts, items and four tracks.',
     description:
-      'Race three rivals over four themed tracks. Drift to charge a boost, and grab item boxes for turbos, goo and zaps. Customise your driver and kart, and race a friend split-screen.',
-    homeTag: '1–2 players · iPad ready',
-    tag: 'Keyboard or touch · 1–2 players',
+      'Race three rivals over four themed tracks. Drift to charge a boost, and grab item boxes for turbos, goo and zaps. Customise your driver and kart, and race a friend split-screen, or up to 11 others online in a room.',
+    homeTag: '1–2 players · Online up to 12 · iPad ready',
+    tag: 'Keyboard or touch · 1–2 players · online up to 12',
     art: '🏎️',
     load: () => import('./turbo-tumble/index.tsx'),
   },
