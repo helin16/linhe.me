@@ -10,6 +10,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1, // the online specs share one relay and one preview server
   timeout: 60_000,
+  reporter: process.env.CI ? [['github'], ['list']] : 'list', // CI failures show as annotations on the run
   use: { baseURL: `http://localhost:${previewPort}` },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
