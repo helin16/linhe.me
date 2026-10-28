@@ -1,6 +1,6 @@
 // Feature 005: the standings panel during races, and who's in the waiting room.
 import { expect, test, type Page } from '@playwright/test';
-import { GAME, host, player, race } from './helpers.ts';
+import { count, GAME, host, player, race } from './helpers.ts';
 
 const panel = (page: Page) => page.locator('#standings');
 const roster = (page: Page) => page.locator('#roster');
@@ -92,6 +92,7 @@ test('US2: host and guests see who joined, their colours, host and you, live', a
   await expect(a.page.locator('#botCount')).toHaveText('+3 computer karts');
 
   const b = await player(browser, info, `${GAME}?room=${code}`);
+  await expect(count(b.page)).toHaveText('2/4 players', { timeout: 5000 });
   await setName(b.page, '<i>B</i>');
   await setColour(b.page, '#0000ff');
   for (const p of [a.page, b.page]) await expect(roster(p).locator('li')).toHaveCount(2, { timeout: 2000 });
@@ -106,6 +107,7 @@ test('US2: host and guests see who joined, their colours, host and you, live', a
 
   // a third player joins, then the host leaves: the host mark moves to P2
   const c = await player(browser, info, `${GAME}?room=${code}`);
+  await expect(count(c.page)).toHaveText('3/4 players', { timeout: 5000 }); // page load + join (slower on CI)
   await expect(roster(c.page).locator('li')).toHaveCount(3, { timeout: 2000 });
   await a.close();
   await expect(roster(b.page).locator('li')).toHaveCount(2, { timeout: 5000 });
