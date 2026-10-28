@@ -83,10 +83,14 @@ test('US2: the list shows waiting rooms live; pick to join, Leave to go back; st
   await expect(rooms(b.page).getByRole('button', { name: `${name} · 1/8` })).toBeVisible({ timeout: 2000 });
 
   // the host starts: the room leaves the list; a stale pick says the race has started
+  // (b's clock is paused so its list can't refresh before the click: the pick has to be stale)
   const stale = rooms(b.page).getByRole('button', { name: `${name} · 1/8` });
+  await b.page.clock.pauseAt(await b.page.evaluate(() => Date.now() + 10));
   await a.page.getByRole('button', { name: 'Start race' }).click();
+  await expect(a.page.locator('.lap').first()).toHaveText('Lap 1/3', { timeout: 5000 });
   await stale.click();
   await expect(b.page.locator('#netInfo')).toHaveText(NetText.Started, { timeout: 3000 });
+  await b.page.clock.resume();
   await expect(rooms(b.page)).toHaveText(NetText.NoRooms, { timeout: 2000 });
 
   expect([...a.errors, ...b.errors]).toEqual([]);
