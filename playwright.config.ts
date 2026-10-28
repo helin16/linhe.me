@@ -14,7 +14,10 @@ export default defineConfig({
   use: { baseURL: `http://localhost:${previewPort}` },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { // headless Firefox turns WebGL off on GPU-less machines (CI); turn it back on
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'], launchOptions: { firefoxUserPrefs: { 'webgl.force-enabled': true } } },
+    },
     { name: 'webkit-ipad', use: { ...devices['iPad (gen 7)'] } }, // Safari engine with touch
   ],
   // always fresh servers: the deploy must test the build it ships, never a stale one left running
