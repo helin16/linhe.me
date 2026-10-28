@@ -23,6 +23,8 @@ const allowed: Record<string, string[]> = {
   'Player 1': ['games/turbo-tumble/settings.ts'], // default player name, not the edit tab (research R5)
   'Player 2': ['games/turbo-tumble/settings.ts'],
   '/': ['shared/router.tsx', '../relay/protocol.ts'], // URL path syntax (slashes), not the home route
+  Rocket: ['../relay/names.ts'], // a word for room names, not the kart style
+  room: ['games/turbo-tumble/net.ts'], // the join link's query key (ROOM_QUERY), not the relay's room frame
 };
 
 const src = fileURLToPath(new URL('.', import.meta.url));

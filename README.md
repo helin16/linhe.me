@@ -44,13 +44,19 @@ Before the first `yarn e2e`, install the browsers once: `yarn playwright install
 
 ## Online play
 
-In Turbo Tumble, choose Online, then Create room: the game shows a 4-character room code and a
-Copy link button. Friends open the link (or choose Online and type the code) and tap Join; up to 4
-players race, and the first player is the host who picks the track and starts.
+In Turbo Tumble, choose Online: a popup lists the rooms waiting for players (name and n/size),
+refreshing on its own. Pick one to join, or choose a size (4 to 12 players) and Host a room: the
+relay gives it a name like "Turbo Otter". In the room everyone sees the same 60-second countdown;
+the host (lowest player number) picks the track and can Start early or Cancel the room, and at 0
+the race starts with computer karts filling the empty spots. After a race the room waits again
+with a fresh countdown. Rooms still have a 4-character code and a Copy link button: opening the
+link joins straight away. 1 Player and 2 Players modes race 4 karts as before.
 
-The relay ([`relay/`](relay/), specs in `specs/003-online-relay`) is game-agnostic: rooms live in
-memory per game and code, messages only reach the same room, and nothing about players is kept or
-logged once a room empties. Its limits come from `RELAY_*` settings (defaults in
+The relay ([`relay/`](relay/), specs in `specs/003-online-relay` and `specs/004-online-lobby`) is
+game-agnostic: rooms live in memory per game and code, messages only reach the same room, and
+nothing about players is kept or logged once a room empties. Rooms have a size (up to
+`RELAY_ROOM_SIZE`, 12), a generated name, and a waiting/racing state the host controls;
+`GET /relay/<game>/rooms` lists the waiting ones (rate limited by `RELAY_LIST_RATE`). Its limits come from `RELAY_*` settings (defaults in
 [`relay/config.ts`](relay/config.ts), keys in `.env.example`). The game finds it at the same site's
 `/relay/` unless `VITE_RELAY_URL` says otherwise; a relay on another host also needs the site's
 Content-Security-Policy `connect-src` to allow it.

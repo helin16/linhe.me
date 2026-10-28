@@ -1,5 +1,8 @@
 # Contract: relay protocol
 
+> Extended by feature 004 (room sizes, names, waiting/racing, host controls, the room list):
+> [004's additions](../../004-online-lobby/contracts/relay-protocol.md).
+
 Shared by the relay and every game client; defined once in `relay/protocol.ts` (owned by the relay, imported by games).
 
 ## Addresses

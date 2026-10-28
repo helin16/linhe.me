@@ -23,10 +23,12 @@ export type PlayerMode = typeof PlayerMode[keyof typeof PlayerMode];
 export const EditTab = { P1: 'Player 1', P2: 'Player 2' } as const;
 export type EditTab = typeof EditTab[keyof typeof EditTab];
 
-// the online panel's connection state, and its buttons
+// the online popup's connection state, and its buttons
 export const OnlineState = { Idle: 'idle', Connecting: 'connecting', InRoom: 'in-room', Error: 'error' } as const;
 export type OnlineState = typeof OnlineState[keyof typeof OnlineState];
-export const OnlineAction = { Create: 'create-room', Join: 'join-room', Copy: 'copy-link', Leave: 'leave-room' } as const;
+export const OnlineAction = {
+  Host: 'host-room', Join: 'join-room', Copy: 'copy-link', Leave: 'leave-room', Cancel: 'cancel-room', Close: 'close-lobby',
+} as const;
 export type OnlineAction = typeof OnlineAction[keyof typeof OnlineAction];
 
 // buttons on the race-finished screen
