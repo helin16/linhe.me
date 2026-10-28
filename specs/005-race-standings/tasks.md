@@ -71,7 +71,7 @@ name, host and "you" marks, live, plus how many computer karts will fill the res
 - [X] T012 Run `yarn test` (100% functions) and `yarn e2e:local`
 - [X] T013 `/code-review` on the diff; fix each finding or note why it was skipped
 - [X] T014 Commit with any waivers; push; CI green (including Firefox)
-- [ ] T015 `yarn deploy`; check quickstart steps 1–4 live
+- [X] T015 `yarn deploy`; check quickstart steps 1–4 live
 
 ---
 
