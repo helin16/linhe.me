@@ -81,8 +81,8 @@ link says the race started.
 - [X] T018 [P] Update `specs/003-online-relay/contracts/relay-protocol.md` with a pointer to 004's additions
 - [ ] T019 Run `yarn test` (100% functions) and `yarn e2e:local`; check SC-008 by hand: a 12-kart race stays smooth on a phone
 - [X] T020 `/code-review` on the diff; fix each finding or note why it was skipped
-- [ ] T021 Commit with the review waivers; push; CI green (including Firefox)
-- [ ] T022 `yarn deploy`; live check per quickstart "Live"
+- [X] T021 Commit with the review waivers; push; CI green (including Firefox)
+- [X] T022 `yarn deploy`; live check per quickstart "Live"
 
 ---
 
