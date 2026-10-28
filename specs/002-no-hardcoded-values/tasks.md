@@ -91,7 +91,7 @@ No setup: no new dependencies or config.
 - [X] T016 Run `yarn build` and `yarn test` once more; confirm `git grep -nE "MAP_NAMES|KART_STYLES|isIn\(|MapName" -- src` is empty
 - [X] T017 Run `/code-review` on the full diff (constitution gate); fix each finding or record a one-line waiver; re-review fixes
 - [X] T018 Commit, with the review waivers and the plan's recorded constitution VII decision in the commit message
-- [ ] T019 `yarn deploy` (its live check must pass)
+- [X] T019 `yarn deploy` (its live check must pass)
 
 ---
 
