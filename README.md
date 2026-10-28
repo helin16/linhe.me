@@ -66,6 +66,7 @@ to `.env` (git-ignored) and fill in `DEPLOY_TARGET`, `SITE_URL` and `DEPLOY_RELA
 
 ```sh
 yarn deploy   # committed, pushed tree only: tests, browser tests, CI must have passed, then relay and site, each checked
+yarn deploy --skip-ci   # same, without waiting for GitHub CI (owner's call when CI is red or unreadable)
 ```
 
 [`scripts/deploy.ts`](scripts/deploy.ts) refuses to run with uncommitted or unpushed changes, runs the

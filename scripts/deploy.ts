@@ -89,7 +89,9 @@ run('yarn', 'install', '--immutable'); // exactly what yarn.lock says
 run('yarn', 'test');
 run('yarn', 'build');
 run('yarn', 'e2e:local'); // browser tests here (Chromium, WebKit); CI runs all three engines
-await ciPassed(repo, git('rev-parse', 'HEAD'));
+// `yarn deploy --skip-ci`: the owner ships despite a red or unreadable CI run (local tests still run)
+if (process.argv.includes('--skip-ci')) console.warn('WARNING: --skip-ci: not checking GitHub CI for this commit');
+else await ciPassed(repo, git('rev-parse', 'HEAD'));
 run('yarn', 'build:relay');
 run('chmod', '-R', 'u=rwX,go=rX', 'dist', 'dist-relay');
 const rsync = ['-az', '--no-o', '--no-g'];
