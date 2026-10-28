@@ -34,3 +34,13 @@ export async function race(page: Page) {
   await page.getByRole('button', { name: 'Start race' }).click();
   await expect(page.locator('.lap').first()).toHaveText('Lap 1/3', { timeout: 5000 });
 }
+
+/** Waits for a page that opened a join link to be in the room; says what the page showed if it never got there.
+ *  Generous: on CI several software-rendered game windows share one machine, so loading can take a while. */
+export async function joined(page: Page, players: string) {
+  try {
+    await expect(count(page)).toHaveText(players, { timeout: 15_000 });
+  } catch {
+    throw new Error(`never joined (expected ${players}); the lobby said: "${await page.locator('#netInfo').textContent()}"`);
+  }
+}

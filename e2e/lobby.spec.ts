@@ -2,7 +2,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { NetText, ROOM_SIZES } from '../src/games/turbo-tumble/net.ts';
 import { GameSlug } from '../src/games/index.ts';
-import { count, GAME, garage, host, info, player } from './helpers.ts';
+import { count, GAME, garage, host, info, player, joined } from './helpers.ts';
 
 const seconds = async (page: Page) => Number((await page.locator('#countdown').textContent())!.match(/\d+/)![0]);
 const online = (page: Page) => page.getByRole('button', { name: 'Online', exact: true }).click();
@@ -33,7 +33,7 @@ test('US1: host picks 4–12, gets a name and a countdown; 0 starts the race wit
   const b = await player(browser, testInfo);
   await online(b.page);
   await rooms(b.page).getByRole('button').first().click();
-  await expect(count(b.page)).toHaveText('2/8 players', { timeout: 3000 });
+  await joined(b.page, '2/8 players');
   expect(Math.abs(await seconds(a.page) - await seconds(b.page))).toBeLessThanOrEqual(1);
   await expect(b.page.getByRole('button', { name: 'Leave' })).toBeVisible();
   await expect(b.page.getByRole('button', { name: 'Cancel' })).toBeHidden();
@@ -52,7 +52,7 @@ test('US1: when the host drops while waiting, the next player hosts and the coun
   const a = await player(browser, testInfo);
   const code = await host(a.page, 4);
   const b = await player(browser, testInfo, `${GAME}?room=${code}`);
-  await expect(count(b.page)).toHaveText('2/4 players', { timeout: 3000 });
+  await joined(b.page, '2/4 players');
   await a.page.clock.fastForward(10_000);
   await b.page.clock.fastForward(10_000);
   const before = await seconds(b.page);
@@ -75,7 +75,7 @@ test('US2: the list shows waiting rooms live; pick to join, Leave to go back; st
   const row = rooms(b.page).getByRole('button', { name: `${name} · 1/8` });
   await expect(row).toBeVisible({ timeout: 2000 }); // without reopening the popup
   await row.click();
-  await expect(count(b.page)).toHaveText('2/8 players', { timeout: 3000 });
+  await joined(b.page, '2/8 players');
   await expect(count(a.page)).toHaveText('2/8 players');
   expect(Math.abs(await seconds(a.page) - await seconds(b.page))).toBeLessThanOrEqual(1);
 

@@ -1,6 +1,6 @@
 // Two browsers race online through the real relay (feature 003 US1; joining by link, feature 004 US3).
 import { expect, test } from '@playwright/test';
-import { count, GAME, garage, host, info, player } from './helpers.ts';
+import { count, GAME, garage, host, info, player, joined } from './helpers.ts';
 
 
 test('host a room, join by link, race, leave, and hand over the host', async ({ browser }, testInfo) => {
@@ -12,7 +12,7 @@ test('host a room, join by link, race, leave, and hand over the host', async ({ 
 
   // the friend opens the join link: straight into the room
   const b = await player(browser, testInfo, `${GAME}?room=${code.toLowerCase()}`);
-  await expect(count(b.page)).toHaveText('2/4 players', { timeout: 3000 });
+  await joined(b.page, '2/4 players');
   await expect(info(b.page)).toContainText('The host picks the track');
   await expect(count(a.page)).toHaveText('2/4 players');
 
@@ -28,7 +28,7 @@ test('host a room, join by link, race, leave, and hand over the host', async ({ 
   await garage(a.page);
   await expect(a.page.locator('#countdown')).toContainText('Starts in', { timeout: 3000 });
   const c = await player(browser, testInfo, `${GAME}?room=${code}`);
-  await expect(count(c.page)).toHaveText('2/4 players', { timeout: 3000 });
+  await joined(c.page, '2/4 players');
   await a.close();
   await expect(info(c.page)).toContainText('You are the host', { timeout: 5000 });
   await expect(c.page.getByRole('button', { name: 'Start race' })).toBeEnabled();
