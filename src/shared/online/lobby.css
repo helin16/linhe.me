@@ -1,0 +1,24 @@
+/* The Online popup and waiting room (src/shared/online/lobby.ts); games style their own `.opt` buttons */
+.online-lobby #netInfo{font-size:14px;line-height:1.4;color:#ffcc00}
+#lobby.online-lobby{position:fixed;inset:0;display:grid;place-items:center;background:#0008;padding:16px;box-sizing:border-box;z-index:5}
+#lobby .box{position:relative;background:#222;color:#fff;border-radius:14px;padding:20px 24px;width:min(360px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:10px}
+#lobby h2{margin:0;font-size:22px}
+#lobby .close{position:absolute;top:10px;right:10px;background:none;color:#fff;font-size:20px;padding:4px 8px}
+#lobby #roomList{display:flex;flex-direction:column;gap:6px;max-height:40vh;overflow:auto}
+#lobby #roomList .room{margin:0;text-align:left}
+#lobby .host-row{display:flex;gap:8px;align-items:center;justify-content:space-between}
+#lobby .host-row .opt,#lobby .join-row .opt{margin:0}
+#lobby .join-row{display:flex;gap:6px;align-items:center}
+#lobby select{font:inherit;padding:4px 6px;border-radius:6px;border:0;margin-left:6px}
+#lobby #cCode{width:96px;text-transform:uppercase;letter-spacing:.15em;font:inherit;font-family:ui-monospace,monospace;padding:4px 8px;border-radius:6px;border:0}
+.online-lobby #roomCode{font:800 26px ui-monospace,monospace;letter-spacing:.15em;color:#ffcc00}
+.online-lobby #roomName{color:#ffcc00}
+.online-lobby #countdown{font:800 22px ui-monospace,monospace;margin:4px 0}
+.online-lobby #roster{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:3px}
+.online-lobby #roster li{display:flex;gap:6px;align-items:center;white-space:nowrap}
+.online-lobby #roster .name{overflow:hidden;text-overflow:ellipsis}
+.online-lobby #roster .dot{width:14px;height:14px;border-radius:50%;flex:none;box-shadow:0 0 0 1px #0008}
+.online-lobby #roster .slot{font-weight:800;min-width:2.2em}
+.online-lobby #roster .tag{font-size:11px;padding:0 5px;border-radius:4px;background:#444}
+.online-lobby #roster li.mine .tag:last-child{background:#ffcc00;color:#000}
+.online-lobby #botCount{font-size:13px;opacity:.8}

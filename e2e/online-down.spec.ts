@@ -2,7 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { gameRoute } from '../src/shared/routes.ts';
 import { GameSlug } from '../src/games/index.ts';
-import { NetText } from '../src/games/turbo-tumble/net.ts';
+import { NetText } from '../src/shared/online/client.ts';
 
 const GAME = gameRoute(GameSlug.TurboTumble);
 

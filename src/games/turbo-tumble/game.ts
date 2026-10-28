@@ -2,11 +2,13 @@
 // the game now renders into `root` and mount() returns a cleanup that leaves the page as it found it.
 import * as THREE from 'three';
 import { isMember, values } from '../../shared/enum.ts';
-import { CODE_LENGTH, NEW_ROOM, RelayMsg, type RoomInfo } from '../../../relay/protocol.ts';
-import { Action, EditTab, EndAction, Item, MsgType, OnlineAction, OnlineState, PlayerMode, RaceState } from './enums.ts';
-import { allowedFrom, connect, deadlineFrom, fetchRooms, joinLink, LIST_POLL_MS, MAX_SLOTS, NetText, parseGameMessage, ROOM_SIZES, roomFromUrl, secondsLeft, type Msg, type NetState } from './net.ts';
+import { Action, EditTab, EndAction, Item, MsgType, RaceState } from './enums.ts';
+import { PlayerMode } from '../../shared/modes.ts';
+import { allowedFrom, COUNTDOWN_MS, MAX_SLOTS, parseGameMessage, ROOM_SIZES, type Msg, type NetState } from './net.ts';
+import { createLobby, type LobbyRoom } from '../../shared/online/lobby.ts';
+import { GameSlug } from '../index.ts';
 import { KartStyle, loadSaved, saveSettings, Track, type PlayerLook } from './settings.ts';
-import { COMPACT_MEDIA, computerKarts, rosterRows, standingRows, type RosterRow, type Standing } from './standings.ts';
+import { COMPACT_MEDIA, standingRows, type Standing } from './standings.ts';
 
 type Vec = THREE.Vector3;
 type StyleDef = { speed: number; turn: number; off: number; body: [number, number, number]; wheel: number; bars: [number, number, number] };
@@ -22,9 +24,7 @@ type Kart = Look & {
   net: NetState | null; netAt: number; human: boolean; remote: boolean; ai: boolean;
 };
 type Voice = { out: StereoPannerNode; engine: OscillatorNode; engineGain: GainNode; screechGain: GainNode };
-// a room we're in: `deadline` is when its countdown ends on our clock; `open` = waiting (not racing)
-type Net = { slot: number; peers: Set<number>; profiles: Record<number, PlayerLook>; code: string; name: string; size: number;
-  open: boolean; deadline: number; sendT?: number };
+type Net = LobbyRoom<PlayerLook>; // the room we're in (src/shared/online/lobby.ts)
 
 const MARKUP = `
 <div id="hud">
@@ -53,25 +53,9 @@ const MARKUP = `
   <div id="stats"></div>
   <div>Track<br><span id="cMap"></span></div>
   <div id="keys"></div>
-  <div id="online">
-    <div id="onlineRoom">
-      <b id="roomName"></b> · <span id="roomCount"></span><div id="countdown" role="timer"></div>
-      <div id="roomInfo"></div>
-      <ul id="roster" aria-label="In this room"></ul><div id="botCount"></div>
-      Code <span id="roomCode"></span> <button class="opt" data-online="${OnlineAction.Copy}">Copy link</button>
-      <button class="opt" data-online="${OnlineAction.Cancel}">Cancel</button><button class="opt" data-online="${OnlineAction.Leave}">Leave</button>
-    </div>
-  </div>
+  <div id="online"></div>
   <button id="go">Start race</button>
 </div>
-<div id="lobby" role="dialog" aria-modal="true" aria-labelledby="lobbyTitle"><div class="box">
-  <button class="close" data-online="${OnlineAction.Close}" aria-label="Close">✕</button>
-  <h2 id="lobbyTitle">Online rooms</h2>
-  <div id="roomList"></div>
-  <div id="netInfo" role="status"></div>
-  <div class="host-row"><label>Players <select id="cSize">${ROOM_SIZES.map(n => `<option>${n}</option>`).join('')}</select></label><button class="opt" data-online="${OnlineAction.Host}">Host a room</button></div>
-  <div class="join-row"><input type="text" id="cCode" maxlength="${CODE_LENGTH}" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Room code" aria-label="Room code"><button class="opt" data-online="${OnlineAction.Join}">Join</button></div>
-</div></div>
 <div id="end"><div id="endText"></div></div>`;
 const GAME_VIEWPORT = 'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';
 
@@ -344,12 +328,25 @@ export function mount(root: HTMLElement): () => void {
 
   // --- online: the relay passes JSON between the browsers in a room (4 to 12). Slots 0…size-1 are grid spots;
   // the local player is always karts[0]. Each browser drives its own kart; the host (lowest slot) drives the AI ---
-  let conn: ReturnType<typeof connect> | null = null, net: Net | null = null, netErr = ''; // net is set once in a room
-  let online: OnlineState = OnlineState.Idle, onlineMode = false; // onlineMode: the Online option is picked
+  let net: Net | null = null, sendT = 0; // net is set once in a room
+  const lobby = createLobby<PlayerLook>({
+    root, panel: $('online'), game: GameSlug.TurboTumble, sizes: ROOM_SIZES, defaultSize: ROOM_SIZES[0],
+    countdownMs: COUNTDOWN_MS, botWord: 'computer karts',
+    roomInfo: host => host ? 'You are the host: pick a track, start when ready' : 'The host picks the track',
+    own: () => cfg.players[0], canShow: () => state === RaceState.Menu,
+    onHello: () => { net = lobby.room; setField(); edit = 0; loadInputs(); refreshMenu(); menu(); }, // refreshMenu sends our profile
+    onPeers: joined => { if (joined !== undefined) sendProfile(); roles(); applyCfg(); },
+    onMessage: m => { // peers' data is checked, then limited to what that peer may do
+      const msg = parseGameMessage(m), ok = msg && net && allowedFrom(msg, net.slot, net.peers, net.size);
+      if (ok) onNet(ok);
+    },
+    onClosed: reason => { net = null; setField(); roles(); applyCfg(); if (reason) menu(); },
+    onCountdownEnd: () => startRace(), onDeactivate: () => refreshMenu(), onChange: garageInfo,
+  });
   const slotOf = (n: number) => net ? (n + net.slot) % net.size : n;
   const kartOf = (s: number) => karts[(s - net!.slot + net!.size) % net!.size];
-  const isHost = () => !net || net.slot < Math.min(MAX_SLOTS, ...net.peers);
-  const send = (m: object) => { if (net) conn?.send(m); }; // the relay adds our slot as `from`
+  const isHost = () => lobby.isHost();
+  const send = (m: object) => lobby.send(m); // the relay adds our slot as `from`
   const sendProfile = () => send({t: MsgType.Me, p: cfg.players[0]});
   // human = a person drives it (here or elsewhere); remote = its state arrives over the network
   function roles() {
@@ -414,7 +411,7 @@ export function mount(root: HTMLElement): () => void {
 
   // --- race state ---
   let state: RaceState = RaceState.Menu, clock = 0, raceTime = 0, menuA = 0, edit = 0, leadProg = 0;
-  let standingsKey = '', rosterKey = ''; // what the standings panel and the roster last drew (feature 005)
+  let standingsKey = ''; // what the standings panel last drew (feature 005)
   const progress = (k: Kart) => k.lap * N + k.idx;
   const ranked = () => [...karts].sort((a, b) =>
     (a.finished && b.finished) ? a.finishTime - b.finishTime : (+b.finished - +a.finished) || progress(b) - progress(a));
@@ -446,12 +443,12 @@ export function mount(root: HTMLElement): () => void {
     reset(); state = RaceState.Menu;
     $('garage-menu').style.display = 'flex';
     // the race is over for the room once the host is back in the garage: it waits again, fresh countdown (FR-011)
-    if (net && !net.open && isHost()) send({t: RelayMsg.Open});
+    if (net && !net.open && isHost()) lobby.reopen();
     netInfo();
   }
   // online, only the host starts races (taking the room off the list first), and starting puts everyone on the grid
   function startRace() {
-    if (net) { if (!isHost()) return; send({t: RelayMsg.Lock}); send({t: MsgType.Start, map: cfg.map}); }
+    if (net) { if (!isHost()) return; lobby.lock(); send({t: MsgType.Start, map: cfg.map}); }
     initAudio(); $('garage-menu').style.display = 'none'; reset(); netInfo();
   }
 
@@ -489,16 +486,9 @@ export function mount(root: HTMLElement): () => void {
   }
 
   function onNet(m: Msg) {
-    if (m.t === MsgType.Hello) {
-      net = {slot: m.slot, peers: new Set(m.peers), profiles: {}, code: m.code, name: m.name, size: m.size,
-        open: m.open, deadline: deadlineFrom(m.openFor)};
-      setField(); edit = 0; loadInputs(); refreshMenu(); menu(); // refreshMenu also sends our profile
-    }
     const n = net;
     if (!n) return;
-    if (m.t === MsgType.Join) { n.peers.add(m.slot); sendProfile(); roles(); }
-    if (m.t === MsgType.Leave) { n.peers.delete(m.slot); delete n.profiles[m.slot]; roles(); applyCfg(); }
-    if (m.t === MsgType.Me) { n.peers.add(m.from); n.profiles[m.from] = m.p; roles(); applyCfg(); }
+    if (m.t === MsgType.Me) { lobby.setProfile(m.from, m.p); roles(); applyCfg(); }
     if (m.t === MsgType.Start && isMember(Track, m.map)) {
       if (m.map !== cfg.map) { cfg.map = m.map; buildTrack(); refreshMenu(); }
       $('garage-menu').style.display = 'none'; reset();
@@ -514,80 +504,12 @@ export function mount(root: HTMLElement): () => void {
       zapFx(kartOf(m.by), t);
       if (!t.remote) { t.spin = 1.2; if (t.human) SFX.spin(pan(t)); }
     }
-    netInfo();
   }
-  /** Hosts (room = NEW_ROOM, with a size) or joins a room. */
-  function openRoom(room: string, size?: number) {
-    if (conn) return;
-    netErr = ''; online = OnlineState.Connecting;
-    conn = connect(room, {
-      hello: h => { online = OnlineState.InRoom; onNet(h); },
-      room: r => { if (net) { net.open = r.open; net.deadline = deadlineFrom(r.openFor); netInfo(); } },
-      message: m => { // peers' data is checked, then limited to what that peer may do
-        const msg = parseGameMessage(m), ok = msg && net && allowedFrom(msg, net.slot, net.peers, net.size);
-        if (ok) onNet(ok);
-      },
-      closed: text => { conn = net = null; online = OnlineState.Error; netErr = text; setField(); roles(); applyCfg(); menu(); netInfo(); pollRooms(); },
-    }, {size});
-    netInfo();
-  }
-  function leaveRoom() {
-    conn?.close();
-    conn = net = null; online = OnlineState.Idle; netErr = '';
-    setField(); roles(); applyCfg(); netInfo();
-  }
-  // the room list, refreshed while the lobby is showing (the relay's list is the source of truth)
-  const lobbyOpen = () => onlineMode && !net && state === RaceState.Menu;
-  function showRooms(rooms: RoomInfo[]) {
-    const rows: HTMLElement[] = rooms.map(r => {
-      const b = document.createElement('button'); b.className = 'opt room';
-      b.textContent = `${r.name} · ${r.players}/${r.size}`; // names come from the relay: text, never HTML
-      b.onclick = () => openRoom(r.code);
-      return b;
-    });
-    if (!rows.length) { const empty = document.createElement('div'); empty.textContent = NetText.NoRooms; rows.push(empty); }
-    $('roomList').replaceChildren(...rows);
-  }
-  let polling = false; // one request at a time, so a slow answer can't overwrite a newer list
-  async function pollRooms() {
-    if (!lobbyOpen() || conn || polling) return;
-    polling = true;
-    const rooms = await fetchRooms().finally(() => { polling = false; });
-    if (lobbyOpen() && !conn) showRooms(rooms);
-  }
-  const poller = setInterval(pollRooms, LIST_POLL_MS);
-  // the waiting room's countdown: the host starts the race when it runs out (FR-007)
-  let shownSeconds = -1;
-  const ticker = setInterval(() => {
-    if (!net || !net.open) return;
-    const left = secondsLeft(net.deadline);
-    if (left !== shownSeconds) { shownSeconds = left; netInfo(); }
-    if (left === 0 && isHost() && state === RaceState.Menu) startRace();
-  }, 250);
-  function netInfo() {
-    $('netInfo').textContent = !onlineMode ? '' : online === OnlineState.Connecting ? 'Connecting…' : netErr;
-    $('online').style.display = onlineMode ? '' : 'none';
-    $('lobby').style.display = lobbyOpen() ? '' : 'none';
-    $('onlineRoom').style.display = net ? '' : 'none';
-    if (net) {
-      $('roomName').textContent = net.name;
-      $('roomCount').textContent = `${net.peers.size + 1}/${net.size} players`;
-      $('countdown').textContent = net.open ? `Starts in ${secondsLeft(net.deadline)}s` : 'Racing';
-      $('roomInfo').textContent = `Online as P${net.slot + 1} · ${isHost() ? 'You are the host: pick a track, start when ready' : 'The host picks the track'}`;
-      $('roomCode').textContent = net.code;
-      const roster = rosterRows(net.slot, net.peers, net.profiles, cfg.players[0]), key = JSON.stringify([net.size, roster]);
-      if (key !== rosterKey) { // netInfo runs on every network message, many a second mid-race
-        rosterKey = key;
-        $('roster').replaceChildren(...roster.map(rosterItem));
-        const bots = computerKarts(net.size, net.peers.size + 1);
-        $('botCount').textContent = bots ? `+${bots} computer karts` : '';
-      }
-      root.querySelector<HTMLElement>(`[data-online="${OnlineAction.Cancel}"]`)!.style.display = isHost() ? '' : 'none';
-      root.querySelector<HTMLElement>(`[data-online="${OnlineAction.Leave}"]`)!.style.display = isHost() ? 'none' : '';
-    }
+  function netInfo() { lobby.render(); } // redraws the popup and waiting room, then garageInfo()
+  function garageInfo() {
     $<HTMLButtonElement>('go').disabled = !isHost();
     $('go').textContent = isHost() ? 'Start race' : 'Waiting for host…';
-    const mode = onlineMode ? PlayerMode.Online : cfg.two ? PlayerMode.Two : PlayerMode.One;
+    const mode = lobby.active ? PlayerMode.Online : cfg.two ? PlayerMode.Two : PlayerMode.One;
     [...$('cPlayers').children].forEach(b => b.classList.toggle('on', b.textContent === mode));
   }
 
@@ -700,8 +622,8 @@ export function mount(root: HTMLElement): () => void {
           if (h) bump(h);
         }
       }
-      if (net && (net.sendT = (net.sendT || 0) + dt) > 0.05) { // ~20 updates a second
-        net.sendT = 0;
+      if (net && (sendT += dt) > 0.05) { // ~20 updates a second
+        sendT = 0;
         const r = (v: number) => Math.round(v * 100) / 100;
         send({t: MsgType.State, k: karts.filter(k => !k.remote).map(k =>
           [slotOf(k.pn), r(k.pos.x), r(k.pos.z), r(k.h), r(k.speed), k.lap, k.idx, r(k.m.rotation.y), +k.spark.visible, +k.finished, r(k.finishTime)])});
@@ -810,12 +732,6 @@ export function mount(root: HTMLElement): () => void {
       return li;
     }));
   }
-  const rosterItem = (r: RosterRow) => {
-    const li = rowItem(r.color, ['slot', `P${r.slot + 1}`], ['name', r.name], ...(r.host ? [['tag', 'host'] as [string, string]] : []),
-      ...(r.you ? [['tag', 'you'] as [string, string]] : []));
-    li.classList.toggle('mine', r.you);
-    return li;
-  };
 
   function hud() {
     $('hud').style.display = state === RaceState.Menu ? 'none' : '';
@@ -891,27 +807,13 @@ export function mount(root: HTMLElement): () => void {
   optRow('cMap', values(Track), m => { cfg.map = m; buildTrack(); refreshMenu(); menu(); });
   optRow('cPlayers', values(PlayerMode), mode => {
     cfg.two = mode === PlayerMode.Two; edit = 0;
-    onlineMode = mode === PlayerMode.Online;
-    if (onlineMode) initAudio(); else leaveRoom();
-    loadInputs(); refreshMenu(); menu(); pollRooms();
+    lobby.setActive(mode === PlayerMode.Online);
+    if (lobby.active) initAudio();
+    loadInputs(); refreshMenu(); menu();
   });
-  const cCode = $<HTMLInputElement>('cCode'), cSize = $<HTMLSelectElement>('cSize');
-  for (const b of root.querySelectorAll<HTMLButtonElement>('[data-online]')) b.onclick = () => {
-    const action = b.dataset.online;
-    if (action === OnlineAction.Host) openRoom(NEW_ROOM, Number(cSize.value));
-    if (action === OnlineAction.Join && cCode.value.trim()) openRoom(cCode.value);
-    if (action === OnlineAction.Leave) { leaveRoom(); pollRooms(); }
-    if (action === OnlineAction.Cancel) { send({t: RelayMsg.Close}); leaveRoom(); pollRooms(); } // guests get 4410
-    if (action === OnlineAction.Close) { leaveRoom(); onlineMode = false; refreshMenu(); }
-    if (action === OnlineAction.Copy && net) {
-      const link = joinLink(location.origin, net.code);
-      const show = () => { $('netInfo').textContent = link; }; // no clipboard: show it to copy by hand
-      navigator.clipboard ? navigator.clipboard.writeText(link).catch(show) : show();
-    }
-  };
   // a join link: pick Online and join that room straight away (online is one player per device)
-  const linkedRoom = roomFromUrl(location.href);
-  if (linkedRoom) { onlineMode = true; cfg.two = false; cCode.value = linkedRoom; }
+  const linkedRoom = lobby.linkedRoom;
+  if (linkedRoom) { cfg.two = false; lobby.setActive(true); }
   // tab order = player order
   optRow('cEdit', values(EditTab), tab => { edit = values(EditTab).indexOf(tab); loadInputs(); refreshMenu(); });
   $('go').onclick = startRace;
@@ -923,7 +825,6 @@ export function mount(root: HTMLElement): () => void {
   // a join link connects after the first frame: building the scene can hold the page up for seconds on slow
   // devices, long enough for the join timeout to run out first
   let pendingRoom = linkedRoom;
-  if (!linkedRoom) pollRooms();
   let last = performance.now();
   renderer.setAnimationLoop(now => {
     const dt = Math.min((now - last) / 1000, 0.05); last = now;
@@ -936,17 +837,16 @@ export function mount(root: HTMLElement): () => void {
       renderer.setViewport(i * w, 0, w, h); renderer.setScissor(i * w, 0, w, h);
       renderer.render(scene, cams[i]);
     }
-    if (pendingRoom) { const room = pendingRoom; pendingRoom = null; openRoom(room); } // once, even if it throws
+    if (pendingRoom) { const room = pendingRoom; pendingRoom = null; lobby.open(room); } // once, even if it throws
   });
 
   return () => {
     listening.abort();
-    clearInterval(poller); clearInterval(ticker);
+    lobby.dispose();
     renderer.setAnimationLoop(null);
     renderer.dispose();
     renderer.forceContextLoss();
     ac?.close();
-    conn?.close();
     if (viewport && siteViewport !== undefined) viewport.content = siteViewport;
     root.innerHTML = '';
     root.classList.remove('tt', 'two', 'touch');

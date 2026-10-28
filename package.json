@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --test --test-timeout=30000 --experimental-test-coverage --test-coverage-include='relay/**' --test-coverage-include='src/games/turbo-tumble/net.ts' --test-coverage-include='src/games/turbo-tumble/standings.ts' --test-coverage-exclude='**/*.test.ts' --test-coverage-functions=100 'src/**/*.test.ts' 'relay/**/*.test.ts'",
+    "test": "node --test --test-timeout=30000 --experimental-test-coverage --test-coverage-include='relay/**' --test-coverage-include='src/games/turbo-tumble/net.ts' --test-coverage-include='src/shared/online/client.ts' --test-coverage-include='src/shared/online/roster.ts' --test-coverage-include='src/games/snake-duel/seed.ts' --test-coverage-include='src/games/snake-duel/settings.ts' --test-coverage-include='src/games/snake-duel/sim.ts' --test-coverage-include='src/games/snake-duel/bots.ts' --test-coverage-include='src/games/snake-duel/messages.ts' --test-coverage-include='src/games/turbo-tumble/standings.ts' --test-coverage-exclude='**/*.test.ts' --test-coverage-functions=100 'src/**/*.test.ts' 'relay/**/*.test.ts'",
     "deploy": "node --env-file-if-exists=.env scripts/deploy.ts",
     "relay": "node relay/server.ts",
     "build:relay": "vite build --config vite.relay.config.ts",

@@ -1,6 +1,7 @@
 // The online lobby (feature 004): host with a size, browse and join, the 60-second countdown, cancel, hand-over.
 import { expect, test, type Page } from '@playwright/test';
-import { NetText, ROOM_SIZES } from '../src/games/turbo-tumble/net.ts';
+import { ROOM_SIZES } from '../src/games/turbo-tumble/net.ts';
+import { NetText } from '../src/shared/online/client.ts';
 import { GameSlug } from '../src/games/index.ts';
 import { count, GAME, garage, host, info, player, joined } from './helpers.ts';
 

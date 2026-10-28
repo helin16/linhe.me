@@ -28,7 +28,8 @@ Before the first `yarn e2e`, install the browsers once: `yarn playwright install
 ## Layout
 
 - `src/pages/`: home, games list, not-found
-- `src/shared/`: site header/footer and the small router
+- `src/shared/`: site header/footer, the small router, the play modes, and `online/`: the relay client, the room
+  player list and the Online popup/waiting room every game's online play uses
 - `src/games/index.ts`: the one games list, read by both pages and the router
 - `src/games/<slug>/`: one self-contained folder per game
 - `relay/`: the online relay (server code, never served); `relay/protocol.ts` is the wire format games import
@@ -64,6 +65,17 @@ nothing about players is kept or logged once a room empties. Rooms have a size (
 [`relay/config.ts`](relay/config.ts), keys in `.env.example`). The game finds it at the same site's
 `/relay/` unless `VITE_RELAY_URL` says otherwise; a relay on another host also needs the site's
 Content-Security-Policy `connect-src` to allow it.
+
+## Snake Duel
+
+An arena snake game (`src/games/snake-duel/`): steer with the mouse (hold to boost), ←/→ or A/D (↑/W/Space to
+boost), or the on-screen stick and boost button. Eat orbs to grow; touch another snake's body or the edge and you're
+out. 1 Player is endless (your best length is kept); 2 Players is split screen with Deathmatch (first to 3 rounds,
+no time limit) or Quick match (5 minutes, rejoin after 3 s, longest wins); Online uses the same lobby as Turbo
+Tumble, rooms of 2 to 8, with the host picking the match and the computer snakes' difficulty. Computer snakes fill
+every arena to 20 (Easy, Normal or Hard), and the garage customises each snake (name, colours, pattern, eyes).
+Offline, `?seed=<number>` replays the same arena and `?bots=0` parks the computer snakes (the browser tests use both).
+Online, one device runs the arena (first the host) and hands it on if its tab is hidden or it leaves.
 
 ## Hosting and deploy
 

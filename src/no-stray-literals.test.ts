@@ -5,26 +5,32 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GameSlug } from './games/index.ts';
-import { Action, EditTab, EndAction, Item, MsgType, PlayerMode, RaceState } from './games/turbo-tumble/enums.ts';
+import { Action, EditTab, EndAction, Item, MsgType, RaceState } from './games/turbo-tumble/enums.ts';
+import { PlayerMode } from './shared/modes.ts';
+import * as Snake from './games/snake-duel/enums.ts';
 import { KartStyle, Track } from './games/turbo-tumble/settings.ts';
 import { values } from './shared/enum.ts';
 import { Route } from './shared/routes.ts';
 import { RelayMsg } from '../relay/protocol.ts';
 
-const enums: Record<string, Record<string, string>> = { Route, GameSlug, Track, KartStyle, RaceState, MsgType, Item, Action, PlayerMode, EditTab, EndAction, RelayMsg };
+const enums: Record<string, Record<string, string>> = { Route, GameSlug, Track, KartStyle, RaceState, MsgType, Item, Action, PlayerMode, EditTab, EndAction, RelayMsg,
+  SnakePattern: Snake.SnakePattern, SnakeEyes: Snake.SnakeEyes, MatchType: Snake.MatchType, Difficulty: Snake.Difficulty,
+  SnakeMsg: Snake.SnakeMsg, MatchState: Snake.MatchState, SnakeTab: Snake.SnakeTab, Screen: Snake.Screen, ResultAction: Snake.ResultAction };
 // the one file allowed to hold each enum's definition
 const home: Record<string, string> = {
   RelayMsg: '../relay/protocol.ts',
   Route: 'shared/routes.ts', GameSlug: 'games/index.ts', Track: 'games/turbo-tumble/settings.ts', KartStyle: 'games/turbo-tumble/settings.ts',
-  ...Object.fromEntries(['RaceState', 'MsgType', 'Item', 'Action', 'PlayerMode', 'EditTab', 'EndAction'].map(n => [n, 'games/turbo-tumble/enums.ts'])),
+  PlayerMode: 'shared/modes.ts',
+  ...Object.fromEntries(['SnakePattern', 'SnakeEyes', 'MatchType', 'Difficulty', 'SnakeMsg', 'MatchState', 'SnakeTab', 'Screen', 'ResultAction'].map(n => [n, 'games/snake-duel/enums.ts'])),
+  ...Object.fromEntries(['RaceState', 'MsgType', 'Item', 'Action', 'EditTab', 'EndAction'].map(n => [n, 'games/turbo-tumble/enums.ts'])),
 };
 // value → files where it may still appear written out, with the reason
 const allowed: Record<string, string[]> = {
-  'Player 1': ['games/turbo-tumble/settings.ts'], // default player name, not the edit tab (research R5)
-  'Player 2': ['games/turbo-tumble/settings.ts'],
+  'Player 1': ['games/turbo-tumble/settings.ts', 'games/snake-duel/settings.ts'], // default player name, not the edit tab (research R5)
+  'Player 2': ['games/turbo-tumble/settings.ts', 'games/snake-duel/settings.ts'],
   '/': ['shared/router.tsx', '../relay/protocol.ts'], // URL path syntax (slashes), not the home route
   Rocket: ['../relay/names.ts'], // a word for room names, not the kart style
-  room: ['games/turbo-tumble/net.ts'], // the join link's query key (ROOM_QUERY), not the relay's room frame
+  room: ['shared/online/client.ts'], // the join link's query key (ROOM_QUERY), not the relay's room frame
 };
 
 const src = fileURLToPath(new URL('.', import.meta.url));

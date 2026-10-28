@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CloseCode, CODE_LENGTH, DEFAULT_ROOM_SIZE, isGameName, isRelayMsg, NEW_ROOM, normaliseCode, parseRelayPath, RelayMsg, relayUrl, roomsUrl } from './protocol.ts';
+import { CloseCode, CODE_LENGTH, DEFAULT_ROOM_SIZE, isGameName, isRelayMsg, isSlot, MAX_SLOT, NEW_ROOM, normaliseCode, parseRelayPath, RelayMsg, relayUrl, roomsUrl } from './protocol.ts';
 
 test('relayUrl builds ws(s) addresses for creating and joining', () => {
   assert.equal(relayUrl('https://example.com/relay/', 'turbo-tumble', NEW_ROOM), 'wss://example.com/relay/turbo-tumble/new');
@@ -26,6 +26,11 @@ test('parseRelayPath reads create and join paths and rejects bad ones', () => {
   for (const bad of ['/relay/Bad_Game/K7QP', '/relay/', '/relay/turbo-tumble/', '/other/turbo-tumble/K7QP',
     `/relay/${'a'.repeat(33)}/K7QP`, '/relay/turbo-tumble/K7Q', '/relay/turbo-tumble/K7QO', '/relay/turbo-tumble/K7QP/x', '/relay/turbo-tumble/%E0%A4%A'])
     assert.equal(parseRelayPath(bad), null, bad);
+});
+
+test('slots: whole numbers from 0 below MAX_SLOT', () => {
+  assert.ok(isSlot(0) && isSlot(MAX_SLOT - 1));
+  for (const bad of [-1, MAX_SLOT, 1.5, '1', null]) assert.ok(!isSlot(bad), String(bad));
 });
 
 test('game names and codes', () => {

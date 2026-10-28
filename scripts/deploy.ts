@@ -9,7 +9,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, posix, relative, sep } from 'node:path';
 import { KEYS } from '../relay/config.ts';
 import { NEW_ROOM, RELAY_PATH, RelayMsg, relayUrl } from '../relay/protocol.ts';
-import { CONNECT_TIMEOUT_MS } from '../src/games/turbo-tumble/net.ts';
+import { CONNECT_TIMEOUT_MS } from '../src/shared/online/client.ts';
 
 const RELAY_SERVICE = 'linhe-relay'; // the systemd unit's name
 const CHECK_GAME = 'deploy-check';   // the live relay check creates (and leaves) a room for this game name

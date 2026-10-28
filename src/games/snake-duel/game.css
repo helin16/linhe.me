@@ -1,0 +1,37 @@
+/* Snake Duel (scoped under .sd; fits phones in either orientation, no page scrolling) */
+.sd{position:fixed;inset:0;overflow:hidden;background:#10131a;color:#fff;font:15px/1.4 system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:none}
+.sd #view{position:absolute;inset:0;width:100%;height:100%;display:block}
+.sd #mini{position:absolute;right:calc(12px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));width:110px;height:110px;pointer-events:none}
+.sd #hud{position:absolute;inset:0;pointer-events:none}
+.sd .len{position:absolute;left:calc(14px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));font-weight:800;font-size:20px;text-shadow:0 1px 3px #000}
+.sd #len2{top:auto;bottom:calc(12px + env(safe-area-inset-bottom))}
+.sd.two:not(.portrait) #len2{left:auto;right:calc(140px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));bottom:auto}
+.sd #msg{position:absolute;top:35%;width:100%;text-align:center;font-size:72px;font-weight:900;text-shadow:0 2px 8px #000}
+.sd .pad{display:none}
+.sd.touch .pad{display:flex;position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));left:14px;right:14px;justify-content:space-between;align-items:flex-end;pointer-events:none}
+.sd.touch.two .pad{right:50%}
+.sd.touch.two .pad + .pad{left:50%;right:14px}
+.sd.touch:not(.two) .pad + .pad{display:none}
+.sd .stick{width:110px;height:110px;border-radius:50%;background:#ffffff18;border:2px solid #ffffff55;display:grid;place-items:center;pointer-events:auto;touch-action:none}
+.sd .stick i{width:44px;height:44px;border-radius:50%;background:#ffffff88}
+.sd .boost{pointer-events:auto;width:84px;height:84px;border-radius:50%;border:0;background:#ff4d6dcc;color:#fff;font-weight:800}
+.sd .boost.on{background:#ff4d6d}
+.sd #setup{position:absolute;top:50%;left:16px;transform:translateY(-50%);background:#000c;padding:18px 22px;border-radius:14px;width:280px;max-width:calc(100vw - 32px);box-sizing:border-box;max-height:calc(100vh - 32px);overflow:auto;display:none;flex-direction:column;gap:10px;touch-action:pan-y}
+.sd #setup h1{margin:0;font-size:26px}
+.sd #setup label{display:flex;justify-content:space-between;align-items:center}
+.sd #setup input[type=text]{width:130px;font:inherit;padding:4px 8px;border-radius:6px;border:0}
+.sd #setup input[type=color]{width:56px;height:30px;border:0;padding:0;background:none}
+.sd #preview{width:100%;height:auto;border-radius:8px}
+.sd #colorNote{font-size:13px;color:#ffcc00}
+.sd button{font:inherit;border:0;border-radius:8px;cursor:pointer}
+.sd .opt{background:#333;color:#fff;padding:5px 10px;margin:4px 4px 0 0}
+.sd .opt.on{background:#33dd77;color:#000}
+.sd #go{background:#33dd77;color:#000;font-weight:800;padding:10px;font-size:17px}
+.sd #go:disabled{background:#555;color:#aaa}
+.sd #end{position:absolute;inset:0;display:none;place-items:center;background:#0008}
+.sd #end>div{background:#222;padding:22px 30px;border-radius:12px;font-size:20px;line-height:1.6;text-align:center}
+.sd #end button{background:#33dd77;color:#000;padding:6px 14px;margin-top:8px}
+.sd #score,.sd #timer{position:absolute;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-weight:800;font-size:20px;text-shadow:0 1px 3px #000;white-space:nowrap}
+.sd #timer{top:calc(40px + env(safe-area-inset-top));font-family:ui-monospace,monospace}
+.sd.two #view{background:linear-gradient(90deg,transparent calc(50% - 1px),#fff3 calc(50% - 1px),#fff3 calc(50% + 1px),transparent calc(50% + 1px))}
+.sd #alive{position:absolute;top:calc(68px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:14px;opacity:.85;text-shadow:0 1px 3px #000}

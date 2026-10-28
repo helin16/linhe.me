@@ -9,6 +9,7 @@ export const ROOMS_PATH = 'rooms';  // GET /relay/<game>/rooms lists open rooms
 export const SIZE_QUERY = 'size';   // /relay/<game>/new?size=8
 export const MIN_ROOM_SIZE = 2;     // a room needs two players to be a room
 export const DEFAULT_ROOM_SIZE = 4; // when a create asks for no size
+export const MAX_SLOT = 64;         // every slot is below this (rooms are far smaller)
 
 /** The relay's own frame types. It sends hello/join/leave/room; the host sends lock/open/close to it.
  *  Every other frame is a game payload, forwarded with `from` set to the sender's slot. */
@@ -32,6 +33,9 @@ export type RoomFrame = { t: typeof RelayMsg.Room } & RoomState;
 export type RoomInfo = { code: string; name: string; players: number; size: number };
 export type Join = { t: typeof RelayMsg.Join; slot: number };
 export type Leave = { t: typeof RelayMsg.Leave; slot: number };
+
+/** A slot number as the relay hands them out. */
+export const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_SLOT;
 
 export const normaliseCode = (code: string) => code.toUpperCase().replace(/\s+/g, '');
 export const isGameName = (name: string) => /^[a-z0-9-]{1,32}$/.test(name);
