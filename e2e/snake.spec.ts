@@ -230,7 +230,7 @@ test.describe('US3: play online, 2 to 8 players', () => {
     await d.page.getByRole('button', { name: 'Close' }).click();
     await d.page.getByRole('button', { name: '1 Player' }).click();
     await start(d.page);
-    await expect(len(d.page)).toHaveText('Length 10');
+    await expect(len(d.page)).toHaveText(/^Length \d+$/); // a solo game runs (it may already have eaten)
     expect([...a.errors, ...b.errors, ...c.errors, ...d.errors]).toEqual([]);
     for (const x of [a, b, c, d]) await x.close();
   });

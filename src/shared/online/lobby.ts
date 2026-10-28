@@ -80,12 +80,15 @@ export function createLobby<P extends Look>(o: LobbyOptions) {
   const cCode = $<HTMLInputElement>('cCode'), cSize = $<HTMLSelectElement>('cSize');
 
   let conn: ReturnType<typeof connect> | null = null, room: LobbyRoom<P> | null = null;
-  let active = false, connecting = false, info = '', polling = false, rosterKey = '', shownSeconds = -1;
+  let active = false, connecting = false, info = '', polling = false, rosterKey = '', listKey = '', shownSeconds = -1;
   const isHost = () => !room || room.slot < Math.min(...room.peers);
   const send = (m: object) => { if (room) conn?.send(m); }; // the relay adds our slot as `from`
   const visible = () => active && !room && o.canShow();
 
   function showRooms(rooms: RoomInfo[]) {
+    const key = JSON.stringify(rooms);
+    if (key === listKey) return; // unchanged: keep the buttons, so a tap that lands mid-refresh still counts
+    listKey = key;
     const rows: HTMLElement[] = rooms.map(r => {
       const b = document.createElement('button'); b.className = 'opt room';
       b.textContent = `${r.name} · ${r.players}/${r.size}`; // names come from the relay: text, never HTML

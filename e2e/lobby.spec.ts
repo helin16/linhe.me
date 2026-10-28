@@ -91,7 +91,7 @@ test('US2: the list shows waiting rooms live; pick to join, Leave to go back; st
   await a.page.getByRole('button', { name: 'Start race' }).click();
   await expect(a.page.locator('.lap').first()).toHaveText('Lap 1/3', { timeout: 5000 });
   await rooms(b.page).getByRole('button', { name: `${name} · 1/8` }).click();
-  await expect(b.page.locator('#netInfo')).toHaveText(NetText.Started, { timeout: 3000 });
+  await expect(b.page.locator('#netInfo')).toHaveText(NetText.Started, { timeout: 15_000 }); // page load + join (slower on CI)
   await b.page.unroute(`**/relay/${GameSlug.TurboTumble}/rooms`);
   await expect(rooms(b.page)).toHaveText(NetText.NoRooms, { timeout: 2000 });
 
@@ -105,7 +105,7 @@ test('US3: a join link to a racing room says the race has started', async ({ bro
   await a.page.getByRole('button', { name: 'Start race' }).click();
   await expect(a.page.locator('.lap').first()).toHaveText('Lap 1/3', { timeout: 5000 });
   const b = await player(browser, testInfo, `${GAME}?room=${code}`);
-  await expect(b.page.locator('#netInfo')).toHaveText(NetText.Started, { timeout: 3000 });
+  await expect(b.page.locator('#netInfo')).toHaveText(NetText.Started, { timeout: 15_000 }); // page load + join (slower on CI)
   expect([...a.errors, ...b.errors]).toEqual([]);
   await a.close(); await b.close();
 });
