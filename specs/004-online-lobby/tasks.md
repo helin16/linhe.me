@@ -59,7 +59,7 @@ stale-pick cases handled.
 **Independent test**: quickstart step 2.
 
 - [X] T013 [P] [US2] Write `e2e/lobby.spec.ts` part 2: B opens Online with no rooms → "No rooms waiting — host one!"; A hosts size 8 → B's list shows A's name "1/8" within 2 s without reopening; B picks it → both see "2/8" and countdowns within 1 s; B presses Leave → back to the list, A sees "1/8"; a room that A locks disappears from B's list within 2 s; picking a room that started meanwhile shows "That race has already started" and refreshes the list; no console errors. Confirm it fails
-- [X] T014 [US2] In `src/games/turbo-tumble/game.ts`: picking Online opens the popup (`OnlineState.Browsing`) and polls `fetchRooms` every `LIST_POLL_MS` (1 500) while browsing, stopping when the popup closes or a room is entered; rows are buttons with the name (text, not HTML) and "n/size", newest first; empty → `NetText.NoRooms`; pick → `openRoom(code)`; errors from `closeMessage` show in the popup and refresh the list; Leave → back to browsing; T013 passes
+- [X] T014 [US2] In `src/games/turbo-tumble/game.ts`: picking Online opens the popup (`OnlineState.Browsing`) and polls `fetchRooms` every `LIST_POLL_MS` (1 000) while browsing, stopping when the popup closes or a room is entered; rows are buttons with the name (text, not HTML) and "n/size", newest first; empty → `NetText.NoRooms`; pick → `openRoom(code)`; errors from `closeMessage` show in the popup and refresh the list; Leave → back to browsing; T013 passes
 
 ---
 

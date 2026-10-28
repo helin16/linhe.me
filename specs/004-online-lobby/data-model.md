@@ -33,7 +33,7 @@ last player leaving → removed. Host = lowest occupied slot (unchanged).
 
 - `Net` gains `name`, `size`, `open`, `deadline` (local ms, from `openFor`).
 - Constants: `MAX_SLOTS` = 12 (replaces `SLOTS`), `OFFLINE_KARTS` = 4, `ROOM_SIZES` = 4…12,
-  `COUNTDOWN_MS` = 60 000, `LIST_POLL_MS` = 1 500.
+  `COUNTDOWN_MS` = 60 000, `LIST_POLL_MS` = 1 000 (was 1 500: too close to the 2 s target on slow devices).
 - Online popup: shown while Online is picked, the garage is open and we're not in a room
   (`OnlineState` stays `idle` → `connecting` → `in-room` | `error(message)`); back to it on leave,
   cancel or disconnect.

@@ -3,7 +3,7 @@
 ## R1. Room list: HTTP polling, not a second WebSocket
 
 - **Decision**: `GET /relay/<game>/rooms` returns JSON (open rooms with a free spot, newest first,
-  `Cache-Control: no-store`). The game polls it every 1.5 s while the Online popup is open (`LIST_POLL_MS`), so a change shows within 2 s including the request.
+  `Cache-Control: no-store`). The game polls it every 1 s while the Online popup is open (`LIST_POLL_MS`), so a change shows within 2 s including the request.
 - **Rationale**: meets SC-003 (≤2 s) with no subscription bookkeeping on the relay; one route on the
   existing `node:http` server; Caddy already proxies `/relay/*` for any method; same origin, so
   `connect-src 'self'` covers it.
@@ -59,5 +59,5 @@
 
 - **Decision**: a token bucket per address for the list route (`RELAY_LIST_RATE`, default 5/s,
   burst 5); over it → HTTP 429. Buckets are dropped on the existing log interval.
-- **Rationale**: FR-014; polling every 1.5 s uses ~0.7/s, leaving room for several tabs or a few
+- **Rationale**: FR-014; polling every 1 s uses 1/s, leaving room for several tabs or a few
   players behind one shared address.

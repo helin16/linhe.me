@@ -9,7 +9,7 @@
 The relay gains generic lobby features: rooms made with a size (2–12) and a relay-generated
 adjective + animal name, an open/locked state with a shared "opened at" clock, host-only control
 frames (lock, reopen, close), and an HTTP list of open rooms. Turbo Tumble replaces its
-create/join panel with an Online popup (room list polled every 1.5 s, Host a room with a 4–12 size
+create/join panel with an Online popup (room list polled every 1 s, Host a room with a 4–12 size
 picker), a waiting-room panel (name, n/size, 60-second countdown, Start/Cancel or Leave, code and
 link), and races of up to 12 karts online (offline stays at 4). No new dependencies.
 

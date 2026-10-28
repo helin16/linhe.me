@@ -9,7 +9,7 @@ import { defaults, fixLook, Track, type PlayerLook } from './settings.ts';
 export const MAX_SLOTS = 12; // grid spots in the largest online race
 export const ROOM_SIZES = [4, 5, 6, 7, 8, 9, 10, 11, 12]; // what a host may pick (FR-015)
 export const COUNTDOWN_MS = 60_000; // a waiting room's countdown (FR-005)
-export const LIST_POLL_MS = 1500;   // room list refresh while the Online popup is open (FR-003: ≤2 s)
+export const LIST_POLL_MS = 1000;   // room list refresh while the Online popup is open (FR-003: ≤2 s, request included)
 
 // x, z, heading, speed, lap, idx, body rotation, spark, finished, finish time
 export type NetState = [number, number, number, number, number, number, number, number, number, number];

@@ -920,7 +920,10 @@ export function mount(root: HTMLElement): () => void {
   loadInputs();
   refreshMenu();
   menu();
-  if (linkedRoom) openRoom(linkedRoom); else pollRooms();
+  // a join link connects after the first frame: building the scene can hold the page up for seconds on slow
+  // devices, long enough for the join timeout to run out first
+  let pendingRoom = linkedRoom;
+  if (!linkedRoom) pollRooms();
   let last = performance.now();
   renderer.setAnimationLoop(now => {
     const dt = Math.min((now - last) / 1000, 0.05); last = now;
@@ -933,6 +936,7 @@ export function mount(root: HTMLElement): () => void {
       renderer.setViewport(i * w, 0, w, h); renderer.setScissor(i * w, 0, w, h);
       renderer.render(scene, cams[i]);
     }
+    if (pendingRoom) { const room = pendingRoom; pendingRoom = null; openRoom(room); } // once, even if it throws
   });
 
   return () => {
