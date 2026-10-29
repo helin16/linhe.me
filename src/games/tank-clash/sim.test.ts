@@ -382,8 +382,8 @@ test('on a slope a tank leans, and its shell leaves from the leaning cannon', ()
   assert.ok(tilt < -0.2, `leans back: ${tilt}`);
   t.falling = true; assert.equal(tiltOf(b, t), 0, 'not while falling'); t.falling = false;
   const onWreck = battle([[Side.Left, 400], [Side.Right, 1200], [Side.Left, 400 + TANK_W * 0.6]]);
-  onWreck.tanks[2].alive = false; onWreck.tanks[0].y = TOP - TANK_H; // half on flat ground, half on a wreck's roof
-  assert.ok(tiltOf(onWreck, onWreck.tanks[0]) <= 0, 'a wreck under one end holds it up');
+  Object.assign(onWreck.tanks[2], { alive: false, y: TOP }); onWreck.tanks[0].y = TOP - TANK_H; // its front end on a wreck's roof
+  assert.ok(tiltOf(onWreck, onWreck.tanks[0]) < 0, 'the wreck under its front holds that end up');
   const flat = makeShell(t, 45, 50, 10), leaning = makeShell(t, 45, 50, 10, tilt);
   assert.ok(Math.abs(leaning.x - flat.x - CANNON_H * Math.sin(tilt)) < 1e-9 && leaning.y > flat.y, 'the pivot moves with the body');
   fire(b); assert.equal(b.shell!.x, leaning.x, 'firing uses the tilt');
