@@ -5,12 +5,13 @@
 // The arcade style swaps in pixel art: banded skies and scenery drawn a cell to a pixel, a pixel palette for the
 // ground, and pixel-art tank sprites (pixel.ts).
 import { CELL, CRATE_SIZE, GRID_H, GRID_W, TANK_H, TANK_W, WORLD_H, WORLD_W } from './constants.ts';
-import { Drop, MapId, Material, Phase, Style, TankType } from './enums.ts';
-import { GOLD, GOLD_BRIGHT, GUNS, METAL, OUTLINE as PIXEL_OUTLINE, SPRITE_GROUND, SPRITE_H, SPRITE_W, tankSprite, type Ramp } from './pixel.ts';
+import { Drop, MapId, Material, Phase, Style, TankType, Variant } from './enums.ts';
+import { BUILD_GUN, GOLD, GOLD_BRIGHT, gunOf, KHAKI, METAL, ramp, OUTLINE as PIXEL_OUTLINE, SPRITE_GROUND, SPRITE_H, SPRITE_W, tankSprite, type Ramp } from './pixel.ts';
 import { activeTank, facing, tiltOf, type Battle, type Tank } from './sim.ts';
 import { groundBelow } from './terrain.ts';
-import { specOf } from './tanks.ts';
+import { specOf, variantOf } from './tanks.ts';
 import type { Terrain } from './terrain.ts';
+import type { TankLook } from './settings.ts';
 
 const CHEER_S = 1.2;   // a repair kit's heart rises and fades this long
 const SHINE_HZ = 3;    // gold bonuses glint this fast
@@ -100,9 +101,9 @@ function arcadeCell(m: number, depth: number, gx: number, gy: number): [number, 
     if (hash(gx, gy) % 61 === 0) return ARC.pebble;
     return ARC.dirt[Math.min(3, Math.floor((depth + 2 * Math.sin(gx / 3)) / 12))];
   }
-  const ramp = m === Material.Snow ? ARC.snow : m === Material.Ice ? ARC.ice : m === Material.Wood ? ARC.wood : ARC.water;
-  if (m === Material.Wood && gx % 4 === 0) return ramp[2]; // plank seams
-  return depth < 1 ? ramp[0] : m === Material.Water ? (hash(gx, gy) % 37 === 0 ? ramp[0] : ramp[1]) : ramp[depth < 3 ? 1 : 2];
+  const r = m === Material.Snow ? ARC.snow : m === Material.Ice ? ARC.ice : m === Material.Wood ? ARC.wood : ARC.water;
+  if (m === Material.Wood && gx % 4 === 0) return r[2]; // plank seams
+  return depth < 1 ? r[0] : m === Material.Water ? (hash(gx, gy) % 37 === 0 ? r[0] : r[1]) : r[depth < 3 ? 1 : 2];
 }
 
 // arcade scenery per map: a banded sky (dithered between bands), pixel clouds, a far range and a near ridge with trees
@@ -142,6 +143,49 @@ function inTree(x: number, y: number, s: ArcScene) {
   if (s.pines) { const h = 56, w = 20 * (y - (base - h)) / h; return y < base && y > base - h && Math.abs(x - tx) < w; }
   const dx = x - tx, dy = y - (base - 26); return dx * dx + dy * dy * 1.4 < 22 * 22;
 }
+// props standing on the near ridge, in scenery pixels from their foot: [ellipse?, x0 or cx, y0 or cy, x1 or rx, y1 or ry, colours]
+type Part = [boolean, number, number, number, number, Ramp];
+const flat = (c: string) => ramp(c, c, c);
+const STONE = ramp('#d8cdb8', '#aa9d86', '#73685a'), PLANK = ramp('#a8774a', '#7a5432', '#4a3320'), BAG = KHAKI;
+const HOLE = flat('#2a2620'), WIRE = flat('#4b4b4b'), SNOWBAG = ramp('#ffffff', '#e4edf7', '#c3d3e6'), SNOW_CAP = hexRGB('#ffffff');
+const ruin = (wall: Ramp): Part[] => [[false, 3, -21, 6, -16, wall], [false, 0, -17, 15, 0, wall], [false, 15, -12, 26, 0, wall],
+  [false, 3, -12, 6, -7, HOLE], [false, 9, -12, 12, -7, HOLE], [false, 19, -8, 22, -4, HOLE], [false, -2, -18, 15, -17, PLANK]];
+const sandbags = (bag: Ramp): Part[] => [0, 1, 2].flatMap(row => Array.from({ length: 4 - row }, (_, i): Part =>
+  [true, i * 5 + row * 2.5, -2 - row * 3.2, 2.8, 1.9, bag]));
+const fence = (w: number): Part[] => [[false, 0, -5, w, -4, WIRE], [false, 0, -3, w, -2, WIRE],
+  ...Array.from({ length: Math.floor(w / 7) + 1 }, (_, i): Part => [false, i * 7, -7, i * 7 + 1, 0, PLANK])];
+const logs: Part[] = [0, 1, 2].flatMap(row => Array.from({ length: 3 - row }, (_, i): Part => [true, i * 5 + row * 2.5, -2.5 - row * 4.2, 2.6, 2.6, PLANK]));
+// props keep clear of the field's sides: propsNear doesn't look across the seam
+const ARC_PROPS: Record<Terrain['map'], [number, Part[]][]> = {
+  [MapId.GreenHills]: [[300, ruin(STONE)], [220, sandbags(BAG)], [1180, sandbags(BAG)], [1240, fence(42)]],
+  [MapId.TimberGap]: [[420, logs], [1150, logs], [820, sandbags(BAG)], [180, fence(35)]],
+  [MapId.LakeValley]: [[1000, ruin(PLANK)], [260, sandbags(BAG)], [1320, sandbags(BAG)], [560, fence(42)]],
+  [MapId.FrostRidge]: [[350, sandbags(SNOWBAG)], [1220, sandbags(SNOWBAG)], [700, fence(42)], [980, ruin(STONE)]],
+};
+const inPart = ([round, a, b, c, d]: Part, x: number, y: number) =>
+  round ? ((x - a) / c) ** 2 + ((y - b) / d) ** 2 <= 1 : x >= a && x < c && y >= b && y < d;
+const partAt = (parts: Part[], x: number, y: number) => { for (let i = parts.length - 1; i >= 0; i--) if (inPart(parts[i], x, y)) return i; return -1; };
+const PROP_REACH = 48; // scenery pixels: no prop is wider or taller
+const NEXT_TO = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+/** The colour of a prop at world (x, y), outlined and shaded like the sprites, or null where there's none. Each column
+ *  of a prop stands on the ridge below it (`ridge`, nearTop(x)), so props follow the slope, beyond the field's sides too. */
+const propsNear = (x: number, map: Terrain['map']) => {
+  const wx = ((x % WORLD_W) + WORLD_W) % WORLD_W;
+  return ARC_PROPS[map].filter(([px]) => wx >= px - 4 * CELL && wx <= px + PROP_REACH * CELL);
+};
+function propAt(x: number, y: number, ridge: number, near: [number, Part[]][], snowy: boolean) {
+  const wx = ((x % WORLD_W) + WORLD_W) % WORLD_W, ly = (y - ridge) / CELL - 2;
+  if (!near.length || ly < -PROP_REACH || ly > 2) return null;
+  for (const [px, parts] of near) { // bodies first, so one prop's outline never cuts into another
+    const lx = (wx - px) / CELL, i = partAt(parts, lx, ly);
+    if (i < 0) continue;
+    const r = parts[i][5], up = partAt(parts, lx, ly - 1);
+    return snowy && up < 0 && r !== WIRE ? SNOW_CAP : up !== i ? r[0] : partAt(parts, lx, ly + 1) !== i ? r[2] : r[1];
+  }
+  for (const [px, parts] of near)
+    if (NEXT_TO.some(([dx, dy]) => partAt(parts, (wx - px) / CELL + dx, ly + dy) >= 0)) return PIXEL_OUTLINE;
+  return null;
+}
 const sceneCache = { key: '', canvas: null as HTMLCanvasElement | null };
 /** The arcade scenery behind the field, one pixel per ground cell, built once per map and view. */
 function arcadeScenery(ctx: Ctx, map: Terrain['map'], v: View) {
@@ -150,8 +194,9 @@ function arcadeScenery(ctx: Ctx, map: Terrain['map'], v: View) {
   if (sceneCache.key !== key) {
     const s = ARC_SCENES[map], cv = document.createElement('canvas'); cv.width = w; cv.height = h;
     const c2 = cv.getContext('2d')!, img = c2.createImageData(w, h), sky = s.sky.map(hexRGB);
-    const [far, farHi, near, nearHi] = [...s.far, ...s.near].map(hexRGB), trees = s.trees.map(hexRGB), white = hexRGB('#ffffff');
+    const [far, farHi, near, nearHi] = [...s.far, ...s.near].map(hexRGB), trees = s.trees.map(hexRGB), white = SNOW_CAP;
     const cloud = ['#ffffff', '#f1f6fb', '#c9d8e8'].map(hexRGB), lake = ['#6cc0ea', '#d8f2ff'].map(hexRGB);
+    const props = Array.from({ length: w }, (_, X) => propsNear(x0 + (X + 0.5) * CELL, map));
     for (let Y = 0; Y < h; Y++) for (let X = 0; X < w; X++) {
       const x = x0 + (X + 0.5) * CELL, y = y0 + (Y + 0.5) * CELL;
       let band = 0;
@@ -168,6 +213,7 @@ function arcadeScenery(ctx: Ctx, map: Terrain['map'], v: View) {
         col = s.snowy && !up ? white : !up ? trees[0] : !inTree(x, y + CELL, s) ? trees[2] : trees[1];
       }
       if (y >= nt) col = y < nt + 2 * CELL ? nearHi : near;
+      col = propAt(x, y, nt, props[X], s.snowy) ?? col;
       const i = (Y * w + X) * 4;
       img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
     }
@@ -219,10 +265,13 @@ export type Gear = { wheels?: boolean; edge?: boolean; missile?: boolean; time?:
 /** Shiny gold, glinting with time. */
 const gold = (time: number) => `hsl(46, 95%, ${55 + 15 * Math.sin(time * SHINE_HZ * Math.PI * 2)}%)`;
 
+type Look = Pick<TankLook, 'type' | 'variant' | 'color'>;
 /** A tank drawn at its bottom centre (x, y), facing `dir` (1 right, −1 left), cannon at `angle` degrees from flat, the
  *  body tilted by `tilt` radians (clockwise) to sit on a slope. */
-export function drawTank(ctx: Ctx, type: TankType, color: string, x: number, y: number, dir: number, angle: number, wreck = false, tilt = 0, gear: Gear = {}, style: Style = Style.Normal) {
-  if (style === Style.Arcade) { pixelTank(ctx, type, color, x, y, dir, angle, wreck, tilt, gear); return; }
+export function drawTank(ctx: Ctx, look: Look, x: number, y: number, dir: number, angle: number, wreck = false, tilt = 0, gear: Gear = {}, style: Style = Style.Normal) {
+  const { type, color } = look, variant = variantOf(look);
+  if (style === Style.Arcade) { pixelTank(ctx, type, variant, color, x, y, dir, angle, wreck, tilt, gear); return; }
+  const [gunLen, gunThick] = BUILD_GUN[variant];
   const body = wreck ? WRECK : color, dark = wreck ? WRECK : shade(color, 0.7), light = wreck ? WRECK : shade(color, 1.25);
   const shine = gold(gear.time ?? 0);
   ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(dir, 1);
@@ -231,6 +280,7 @@ export function drawTank(ctx: Ctx, type: TankType, color: string, x: number, y: 
   const poly = (fill: string, pts: number[][]) => { ctx.fillStyle = fill; ctx.beginPath(); pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.closePath(); ctx.fill(); ctx.stroke(); };
   const wheel = (cx: number, cy: number, r: number) => { ctx.fillStyle = wreck ? WRECK : gear.wheels ? shine : '#55555f'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = gear.wheels ? '#fff6c8' : '#9a9aa6'; ctx.beginPath(); ctx.arc(cx, cy, r * 0.4, 0, Math.PI * 2); ctx.fill(); };
   const cannon = (px: number, py: number, len: number, thick: number, twin = false) => {
+    len *= gunLen; thick *= gunThick;
     ctx.save(); ctx.translate(px, py); ctx.rotate(-angle * Math.PI / 180);
     for (const off of twin ? [-thick * 0.8, thick * 0.8] : [0]) {
       ctx.fillStyle = dark; ctx.fillRect(0, off - thick / 2, len, thick); ctx.strokeRect(0, off - thick / 2, len, thick);
@@ -275,8 +325,8 @@ export function drawTank(ctx: Ctx, type: TankType, color: string, x: number, y: 
 const PIXEL_SCALE = TANK_W / 58; // world units per sprite design unit (the sprite's body is 58 units long)
 const css = (c: number[]) => `rgb(${c.join(',')})`;
 /** The arcade tank: its cannon (pixel colours, at the tank's angle) behind the pixel-art body sprite. */
-function pixelTank(ctx: Ctx, type: TankType, color: string, x: number, y: number, dir: number, angle: number, wreck: boolean, tilt: number, gear: Gear) {
-  const S = PIXEL_SCALE, gun = GUNS[type], shine = Math.sin((gear.time ?? 0) * SHINE_HZ * Math.PI * 2) > 0;
+function pixelTank(ctx: Ctx, type: TankType, variant: Variant, color: string, x: number, y: number, dir: number, angle: number, wreck: boolean, tilt: number, gear: Gear) {
+  const S = PIXEL_SCALE, gun = gunOf(type, variant), shine = Math.sin((gear.time ?? 0) * SHINE_HZ * Math.PI * 2) > 0;
   ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(dir, 1);
   angle += dir * tilt * 180 / Math.PI;
   ctx.save(); ctx.translate((gun.x - SPRITE_W / 2) * S, (gun.y - SPRITE_GROUND) * S); ctx.rotate(-angle * Math.PI / 180);
@@ -289,10 +339,11 @@ function pixelTank(ctx: Ctx, type: TankType, color: string, x: number, y: number
     ctx.strokeRect(x0, y0 - th / 2, len, th);
   };
   for (const [off, len, th] of gun.barrels) bar(0, off * S, len * S, th * S);
-  if (gun.brake) bar((gun.barrels[0][1] - gun.brake[0] / 2) * S, 0, gun.brake[0] * S, gun.brake[1] * S);
+  const brake = gun.brake, muzzle = gun.barrels[0][1]; // on each full-length barrel
+  if (brake) for (const [off, len] of gun.barrels) if (len === muzzle) bar((len - brake[0] / 2) * S, off * S, brake[0] * S, brake[1] * S);
   ctx.restore();
   const gold = shine ? GOLD_BRIGHT : GOLD;
-  const sprite = tankSprite(type, color, wreck, { wheels: gear.wheels ? gold : null, edge: gear.edge ? gold[1] : null });
+  const sprite = tankSprite(type, variant, color, wreck, { wheels: gear.wheels ? gold : null, edge: gear.edge ? gold[1] : null });
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(sprite, -SPRITE_W / 2 * S, -SPRITE_GROUND * S, SPRITE_W * S, SPRITE_H * S);
   if (gear.missile) { ctx.translate(-4, -TANK_H - 4); missile(ctx); }
@@ -353,7 +404,7 @@ export function drawBattle(ctx: Ctx, w: number, h: number, b: Battle, time: numb
       ctx.strokeStyle = gold(time); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(t.x, t.y - TANK_H / 2, TANK_W * 0.75, 0, Math.PI * 2); ctx.stroke();
     }
     const gear = t.alive ? { wheels: t.gripUntil !== null && t.gripUntil >= b.round, edge: t.shield, missile: t.missile, time } : {};
-    drawTank(ctx, t.type, t.look.color, t.x, t.y, facing(t.side), t.angle, !t.alive, tiltOf(b, t), gear, style);
+    drawTank(ctx, t.look, t.x, t.y, facing(t.side), t.angle, !t.alive, tiltOf(b, t), gear, style);
     if (!t.alive) { smoke(ctx, t.x, t.y - TANK_H, time); continue; }
     label(ctx, t, t === active && aiming, time, style);
   }
@@ -428,12 +479,12 @@ function label(ctx: Ctx, t: Tank, active: boolean, time: number, style: Style) {
 }
 
 /** The garage preview: one tank, big, on a strip of grass. */
-export function drawPreview(ctx: Ctx, type: TankType, color: string, style: Style = Style.Normal) {
+export function drawPreview(ctx: Ctx, look: Look, style: Style = Style.Normal) {
   const { width: w, height: h } = ctx.canvas, k = Math.min(w / (TANK_W * 2), h / (TANK_H * 2.2));
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = style === Style.Arcade ? css(ARC.grass[1]) : `rgb(${GRASS.join(',')})`; ctx.fillRect(0, h - 10, w, 10);
   ctx.setTransform(k, 0, 0, k, w / 2, h - 10);
-  drawTank(ctx, type, color, 0, 0, 1, 35, false, 0, {}, style);
+  drawTank(ctx, look, 0, 0, 1, 35, false, 0, {}, style);
 }
 
 /** Icons for bonuses a tank holds, for the life panel. */

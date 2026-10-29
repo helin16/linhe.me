@@ -1,8 +1,8 @@
 // The arcade style's pixel-art tanks (spec Style): each type's body drawn on a small pixel grid — shapes with a
 // light top row and a dark bottom row, then a dark outline — in the player's colour, cached as a canvas. The cannon
-// isn't in the sprite: draw.ts draws it at the tank's angle from GUNS. Coordinates are design units: the tank is
+// isn't in the sprite: draw.ts draws it at the tank's angle from gunOf. Coordinates are design units: the tank is
 // 64 × 36 with the tracks' bottom at y = 34 and the front to the right. Original designs (the canvas's arcade row).
-import { TankType } from './enums.ts';
+import { TankType, Variant } from './enums.ts';
 
 type RGB = [number, number, number];
 export type Ramp = [RGB, RGB, RGB]; // light, mid, dark
@@ -10,14 +10,15 @@ export type Ramp = [RGB, RGB, RGB]; // light, mid, dark
 const K = 2;                       // pixels per design unit
 export const SPRITE_W = 64, SPRITE_H = 36, SPRITE_GROUND = 34;
 const hex = (h: string): RGB => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
-const ramp = (l: string, m: string, d: string): Ramp => [hex(l), hex(m), hex(d)];
+export const ramp = (l: string, m: string, d: string): Ramp => [hex(l), hex(m), hex(d)];
 const scaled = (c: RGB, f: number): RGB => c.map(v => Math.max(0, Math.min(255, Math.round(v * f)))) as RGB;
 /** A ramp around one colour: lighter on top, darker below. */
 export const rampOf = (color: string): Ramp => { const c = hex(color); return [scaled(c, 1.3), c, scaled(c, 0.62)]; };
 
 export const METAL = ramp('#cfd3d6', '#8f959c', '#565b62');
 const TRACK = ramp('#57524c', '#34302c', '#1f1c1a'), WHEEL = ramp('#b3afa6', '#77736c', '#45423e');
-const RUST = ramp('#f6ad55', '#cc6d2b', '#8a4318'), KHAKI = ramp('#eadb9f', '#c6ad63', '#8c7738');
+const RUST = ramp('#f6ad55', '#cc6d2b', '#8a4318');
+export const KHAKI = ramp('#eadb9f', '#c6ad63', '#8c7738');
 const GLASS = ramp('#d8f4ff', '#7cc6e8', '#3c7fa6'), LAMP = ramp('#fff1a0', '#f2c230', '#a8780e');
 export const GOLD = ramp('#fff1a0', '#f2c230', '#a8780e'), GOLD_BRIGHT = ramp('#ffffff', '#ffe066', '#c89a1a');
 export const OUTLINE: RGB = hex('#1a130c');
@@ -143,21 +144,47 @@ const BODIES: Record<TankType, (g: Grid, b: Ramp, wheel: Ramp) => void> = {
 };
 
 /** Each type's cannon: where it pivots, barrels (offset across the pivot, length, thickness), a muzzle brake. */
-export const GUNS: Record<TankType, { x: number; y: number; barrels: [number, number, number][]; brake?: [number, number] }> = {
+const GUNS: Record<TankType, { x: number; y: number; barrels: [number, number, number][]; brake?: [number, number] }> = {
   [TankType.Scout]: { x: 36, y: 12.5, barrels: [[0, 15, 2.2]] },
   [TankType.Allrounder]: { x: 44, y: 14.5, barrels: [[0, 17, 3]], brake: [4, 6] },
   [TankType.Heavy]: { x: 46, y: 11, barrels: [[-2, 16, 2.6], [2, 16, 2.6]] },
   [TankType.Artillery]: { x: 34, y: 13, barrels: [[0, 30, 3], [3, 13, 2.2]] },
 };
 
+/** How each build changes the cannon (length, thickness): A's is long and slim, C's short and fat. */
+export const BUILD_GUN: Record<Variant, [number, number]> = { [Variant.A]: [1.15, 0.75], [Variant.B]: [1, 1], [Variant.C]: [0.9, 1.35] };
+/** A type's cannon in a build; C's always has a muzzle brake. */
+export function gunOf(type: TankType, variant: Variant) {
+  const g = GUNS[type], [len, th] = BUILD_GUN[variant];
+  const barrels = g.barrels.map(([off, l, t]): [number, number, number] => [off * th, l * len, t * th]);
+  const brake: [number, number] | undefined = g.brake ? [g.brake[0], g.brake[1] * th] : variant === Variant.C ? [4, barrels[0][2] * 1.4] : undefined;
+  return { ...g, barrels, brake };
+}
+
+// each type's hull top, front end and a clear row below its rivets, where the builds' marks go
+const HULL: Record<TankType, [number, number, number]> = {
+  [TankType.Scout]: [16, 60, 20.5], [TankType.Allrounder]: [18, 61, 21], [TankType.Heavy]: [15, 62, 18.5], [TankType.Artillery]: [20, 58, 23.5],
+};
+// A wears a khaki stripe along the hull; C a bolted armour plate on the hull's side, behind the sloped front
+const BUILD_MARKS: Record<Variant, (g: Grid, type: TankType) => void> = {
+  [Variant.A]: (g, type) => { const [, front, row] = HULL[type]; g.rect(12, row, front - 10, row + 1.5, KHAKI); },
+  [Variant.B]: () => {},
+  [Variant.C]: (g, type) => {
+    const [top, front] = HULL[type];
+    g.rect(front - 18, top + 1, front - 8, top + 5, METAL);
+    g.rivets([front - 16, front - 11], top + 2.5);
+  },
+};
+
 const cache = new Map<string, HTMLCanvasElement>();
-/** A tank body's sprite: its colour, or a blackened wreck; grip gear gilds the wheels, a shield the outline. */
-export function tankSprite(type: TankType, color: string, wreck: boolean, gold: { wheels: Ramp | null; edge: RGB | null }) {
-  const key = [type, color, wreck, gold.wheels?.[1], gold.edge].join('|');
+/** A tank body's sprite in its build: its colour, or a blackened wreck; grip gear gilds the wheels, a shield the outline. */
+export function tankSprite(type: TankType, variant: Variant, color: string, wreck: boolean, gold: { wheels: Ramp | null; edge: RGB | null }) {
+  const key = [type, variant, color, wreck, gold.wheels?.[1], gold.edge].join('|');
   let cv = cache.get(key);
   if (!cv) {
     const g = new Grid();
     BODIES[type](g, wreck ? WRECK : rampOf(color), wreck ? WRECK : gold.wheels ?? WHEEL);
+    if (!wreck) BUILD_MARKS[variant](g, type);
     g.outline(gold.edge ?? OUTLINE);
     cache.set(key, cv = g.canvas());
   }

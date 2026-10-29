@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { values } from '../../shared/enum.ts';
 import { Grip, TankType, Variant } from './enums.ts';
-import { clampAngle, clampPower, DEFAULT_TYPE, DEFAULT_VARIANT, MAX_POWER, specOf, TANKS, tenths } from './tanks.ts';
+import { clampAngle, clampPower, DEFAULT_TYPE, DEFAULT_VARIANT, MAX_POWER, specOf, TANKS, tenths, variantOf } from './tanks.ts';
 
 test('the table matches the spec (FR-007)', () => {
   assert.deepEqual(TANKS[TankType.Heavy], { minAngle: 30, maxAngle: 65, damage: 15, hearts: 50, grip: Grip.Low, speed: 60 });
@@ -53,4 +53,9 @@ test('tenths read as hearts; angles are held inside a build’s limits', () => {
   assert.equal(clampAngle(heavy, 80), 65);
   assert.equal(clampAngle(heavy, 40), 40);
   assert.equal(clampAngle({ type: TankType.Heavy, variant: Variant.C }, 60), 57);
+});
+
+test('a look without a build is a B', () => {
+  assert.equal(variantOf({}), Variant.B);
+  assert.equal(variantOf({ variant: Variant.C }), Variant.C);
 });

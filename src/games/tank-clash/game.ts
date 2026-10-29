@@ -540,7 +540,7 @@ export function mount(root: HTMLElement): () => void {
     $('stats').textContent = `Cannon ${spec.minAngle}°–${spec.maxAngle}° · Damage ${tenths(spec.damage)} · Top power ${spec.topPower} · Hearts ${spec.hearts / 10} · Grip ${spec.grip} · Speed ${spec.speed}`;
     $('keys').textContent = KEY_HELP;
     $('colorNote').textContent = note;
-    drawPreview(preview, p.type, p.color, cfg.style);
+    drawPreview(preview, p, cfg.style);
     save(); sendLook(); lobby.render(); // the popup and waiting room, then garageInfo()
     if (online() && lobby.isHost()) sendMode();
   }

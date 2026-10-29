@@ -28,9 +28,12 @@ const BUILDS: Record<Variant, { widen: number; damage: number }> = {
   [Variant.C]: { widen: -8, damage: 1.25 },
 };
 
-/** A tank's stats: its type's, changed by its build (B when none is given). */
+/** A tank's build, B when none is given. */
+export const variantOf = (look: { variant?: Variant }) => look.variant ?? DEFAULT_VARIANT;
+
+/** A tank's stats: its type's, changed by its build. */
 export function specOf(look: { type: TankType; variant?: Variant }): TankSpec {
-  const base = TANKS[look.type], build = BUILDS[look.variant ?? DEFAULT_VARIANT], damage = Math.round(base.damage * build.damage);
+  const base = TANKS[look.type], build = BUILDS[variantOf(look)], damage = Math.round(base.damage * build.damage);
   return { ...base, minAngle: Math.max(MIN_ANGLE, base.minAngle - build.widen), maxAngle: Math.min(MAX_ANGLE, base.maxAngle + build.widen),
     damage, topPower: topPowerOf(damage) };
 }

@@ -79,6 +79,8 @@ cartoon explosions with smoke. Original art; nothing copied from those games.
 - Q: Does the garage preview the choices? → A: Yes, like Turbo Tumble: the chosen map and the tanks are shown behind the garage.
 - Q: Can a tank type be tuned? → A: Yes: each type has builds A, B (standard) and C; A tilts its cannon further but hits softer, C tilts less but hits harder.
 - Q: Does a harder-hitting gun reach as far? → A: No: each gun has its own reach; tanks and builds that hit harder have a lower top power, so they can't fire as far. Damage doesn't change with distance.
+- Q: Do the builds look different? → A: Yes, in both styles: A's cannon is longer and slimmer, C's shorter and fatter (with a muzzle brake in Arcade); in Arcade A also wears a khaki hull stripe and C a bolted armour plate on the hull's side.
+- Q: Do the arcade maps have props? → A: Yes, scenery only, on the hills behind the field: Green Hills a ruined farmhouse, sandbags and a fence; Timber Gap log piles, sandbags and a fence; Lake Valley a wooden ruin, sandbags and a fence; Frost Ridge snowy sandbags, a fence and a ruin.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -541,8 +543,9 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   a mute button MUST silence them all, remembered on this device.
 - **FR-026**: The garage MUST offer a Style switch at the top of its panel: Normal (default) or Arcade,
   remembered on this device and applying to this device only. Arcade MUST draw pixel-art tanks (one
-  sprite per type in the player's colour, cannons at the tank's angle, bonuses shown as in FR-021),
-  pixel-art scenery and ground for every map, a pixel font with square bevelled buttons and panels,
+  sprite per type and build in the player's colour, cannons at the tank's angle, bonuses shown as in FR-021),
+  pixel-art scenery and ground for every map with background props on the hills behind the field (ruins, sandbags,
+  fences, log piles; scenery only, not part of the battlefield), a pixel font with square bevelled buttons and panels,
   and play retro sounds made by the game instead of the recorded clips. Gameplay is the same in both.
 - **FR-025**: A tank destroyed by losing its hearts MUST leave a steel wreck in its place. A wreck
   MUST take no damage and never be pushed by blasts; shells explode on it as on ground; tanks
