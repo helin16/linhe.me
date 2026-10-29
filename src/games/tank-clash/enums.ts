@@ -3,6 +3,10 @@
 export const TankType = { Scout: 'Scout', Allrounder: 'Allrounder', Heavy: 'Heavy', Artillery: 'Artillery' } as const;
 export type TankType = typeof TankType[keyof typeof TankType];
 
+// each type comes in three builds: A tilts further but hits softer, C tilts less but hits harder, B in between
+export const Variant = { A: 'A', B: 'B', C: 'C' } as const;
+export type Variant = typeof Variant[keyof typeof Variant];
+
 // the maps the picker offers; Random is resolved to one of the others when a battle starts
 export const MapId = { GreenHills: 'Green Hills', TimberGap: 'Timber Gap', LakeValley: 'Lake Valley', FrostRidge: 'Frost Ridge', Random: 'Random' } as const;
 export type MapId = typeof MapId[keyof typeof MapId];
@@ -18,7 +22,7 @@ export const Grip = { High: 'High', Medium: 'Medium', Low: 'Low' } as const;
 export type Grip = typeof Grip[keyof typeof Grip];
 
 // what an air drop holds (FR-021)
-export const Drop = { Repair: 'Repair kit', Power: 'Power shell', GripGear: 'Grip gear', Shield: 'Shield' } as const;
+export const Drop = { Repair: 'Repair kit', Power: 'Power shell', GripGear: 'Grip gear', Shield: 'Shield', Missile: 'Missile' } as const;
 export type Drop = typeof Drop[keyof typeof Drop];
 
 export const Difficulty = { Easy: 'Easy', Normal: 'Normal', Hard: 'Hard' } as const;
@@ -46,6 +50,10 @@ export type Screen = typeof Screen[keyof typeof Screen];
 // buttons on the result screen
 export const ResultAction = { Again: 'play-again', Garage: 'to-garage' } as const;
 export type ResultAction = typeof ResultAction[keyof typeof ResultAction];
+
+// the game's look and sounds: the normal cartoon style or the pixel-art arcade one (shown capitalised)
+export const Style = { Normal: 'normal', Arcade: 'arcade' } as const;
+export type Style = typeof Style[keyof typeof Style];
 
 // on-screen buttons held down to drive and aim
 export const Hold = { DriveLeft: 'drive-left', DriveRight: 'drive-right', AimUp: 'aim-up', AimDown: 'aim-down', PowerDown: 'power-down', PowerUp: 'power-up' } as const;

@@ -1,4 +1,4 @@
-// Tank Clash (feature 007), against the production build. `?seed=` fixes the battlefield, wind and computer tanks
+// Tank Clash (feature 007), against the production build. `?seed=` fixes the battlefield and computer tanks
 // offline (research R12); the layouts used here are pinned in src/games/tank-clash/seed.test.ts.
 import { expect, test, type Page } from '@playwright/test';
 import { gameRoute } from '../src/shared/routes.ts';
@@ -21,7 +21,7 @@ async function aim(page: Page, angle: number, power: number) {
 }
 
 test.describe('US1: battle computer tanks solo', () => {
-  test('a battle: both tanks in the life panel, wind, a 30 s countdown, the active tank highlighted', async ({ browser }, info) => {
+  test('a battle: both tanks in the life panel, a 30 s countdown, the active tank highlighted, no wind', async ({ browser }, info) => {
     const a = await player(browser, info, `${TANK}?seed=1`);
     await expect(a.page.getByRole('heading', { name: 'Tank Clash' })).toBeVisible();
     await pick(a.page, 'Green Hills');
@@ -30,7 +30,7 @@ test.describe('US1: battle computer tanks solo', () => {
     await expect(hearts(a.page, 'Player 1')).toHaveText('4.0');
     await expect(hearts(a.page, 'CPU 1')).toHaveText('5.0');
     await expect(row(a.page, 'Player 1')).toHaveClass(/active/);
-    await expect(a.page.locator('#wind')).toHaveText(/Wind → 11/);
+    await expect(a.page.locator('#wind')).toHaveCount(0);
     await expect(a.page.locator('#timer')).toHaveText(/^(30|29|28)$/);
     expect(a.errors).toEqual([]);
     await a.close();
@@ -50,7 +50,7 @@ test.describe('US1: battle computer tanks solo', () => {
     const a = await player(browser, info, `${TANK}?seed=1`);
     await pick(a.page, 'Green Hills');
     await start(a.page);
-    await aim(a.page, 45, 88);
+    await aim(a.page, 45, 91);
     await a.page.keyboard.press('Space');
     await expect(hearts(a.page, 'CPU 1')).toHaveText('4.0', { timeout: 8000 });
     await expect(turn(a.page)).toHaveText("CPU 1's turn (computer)", { timeout: 5000 });
@@ -58,12 +58,15 @@ test.describe('US1: battle computer tanks solo', () => {
     await a.close();
   });
 
-  test('when the countdown runs out the turn passes with no shot', async ({ browser }, info) => {
+  test('a big countdown shows for the last 10 seconds; when it runs out the turn passes with no shot', async ({ browser }, info) => {
     const a = await player(browser, info, `${TANK}?seed=1`);
     await pick(a.page, 'Green Hills');
     await start(a.page);
     await expect(turn(a.page)).toHaveText("Player 1's turn");
-    await a.page.clock.runFor(31_000);
+    await expect(a.page.locator('#bigCount')).toBeHidden(); // only for the last 10 seconds
+    await a.page.clock.runFor(21_000);
+    await expect(a.page.locator('#bigCount')).toHaveText(/^(10|9|8)$/);
+    await a.page.clock.runFor(10_000);
     await expect(turn(a.page)).toHaveText("CPU 1's turn (computer)");
     await expect(hearts(a.page, 'CPU 1')).toHaveText('5.0');
     await a.close();
@@ -153,7 +156,7 @@ test.describe('US2: two players on one device', () => {
     await expect(turn(a.page)).toHaveText("Player 1's turn");
     expect(await a.page.locator('#panel li').evaluateAll(li => li.map(x => x.querySelector('.name')?.textContent ?? x.textContent)))
       .toEqual(['Left', 'Player 1', 'Right', 'Player 2']);
-    await aim(a.page, 30, 62);
+    await aim(a.page, 30, 64);
     await a.page.keyboard.press('Space');
     await expect(a.page.locator('#endText')).toContainText('Player 1 wins!', { timeout: 10_000 });
     expect(a.errors).toEqual([]);
@@ -171,6 +174,7 @@ test.describe('US2: two players on one device', () => {
     await pick(a.page, '2 Players');
     await pick(a.page, '6');
     await start(a.page);
+    await expect(a.page.locator('#panel .tank')).toHaveCount(6);
     const names = await a.page.locator('#panel .tank .name').allTextContents();
     expect(names).toEqual(['Player 1', 'CPU 1', 'CPU 2', 'Player 2', 'CPU 3', 'CPU 4']);
     await a.close();
@@ -181,10 +185,10 @@ test.describe('US3: choose and customise your tank', () => {
   test('the preview and stats change at once; choices survive a reload; the battle uses them; names show as typed', async ({ browser }, info) => {
     const a = await player(browser, info, `${TANK}?seed=1`);
     const shot = () => a.page.locator('#preview').evaluate((c: HTMLCanvasElement) => c.toDataURL());
-    await expect(a.page.locator('#stats')).toHaveText('Cannon 10°–75° · Damage 1.0 · Hearts 4 · Grip Medium');
+    await expect(a.page.locator('#stats')).toHaveText('Cannon 10°–75° · Damage 1.0 · Top power 95 · Hearts 4 · Grip Medium · Speed 75');
     const before = await shot();
     await pick(a.page, 'Heavy');
-    await expect(a.page.locator('#stats')).toHaveText('Cannon 30°–65° · Damage 1.5 · Hearts 5 · Grip Low');
+    await expect(a.page.locator('#stats')).toHaveText('Cannon 30°–65° · Damage 1.5 · Top power 89 · Hearts 5 · Grip Low · Speed 60');
     expect(await shot()).not.toEqual(before);
     const heavy = await shot();
     await a.page.getByLabel('Colour').fill('#3366ff');
@@ -231,7 +235,7 @@ test.describe('US4: pick the map', () => {
 
 test.describe('US5: air drops', () => {
   test('after a round a crate floats down; driving onto a repair kit adds a heart', async ({ browser }, info) => {
-    const a = await player(browser, info, `${TANK}?seed=19`);
+    const a = await player(browser, info, `${TANK}?seed=15`);
     await pick(a.page, 'Green Hills');
     await start(a.page);
     await expect(turn(a.page)).toHaveText("Player 1's turn");

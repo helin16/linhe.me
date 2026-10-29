@@ -31,8 +31,6 @@ export const GEN_TRIES = 20;           // battlefields tried before falling back
 // tanks
 export const TANK_W = 48;
 export const TANK_H = 26;
-export const FUEL = 160;               // driving distance per turn
-export const DRIVE_SPEED = 70;         // units per second
 export const MAX_CLIMB = 1.19;         // rise per unit across the tank's length (50°)
 export const ANGLE_SPEED = 40;         // degrees per second while ↑/↓ is held
 export const POWER_SPEED = 45;         // power points per second while Q/E is held
@@ -42,31 +40,35 @@ export const START_GAP = 8;            // tanks start at least this far apart (b
 
 // shots (FR-004, FR-005)
 export const GRAVITY = 400;            // units per second²
-export const POWER_SCALE = 7.6;        // shell speed per power point: 100 at 45° crosses the field with no wind
-export const WIND_MAX = 60;            // horizontal pull, units per second²
+export const POWER_SCALE = 7.6;        // shell speed per power point: 100 at 45° crosses the field
 export const BLAST_R = 40;
 export const WOOD_BLAST_FACTOR = 1.5;  // wood breaks within a bigger radius (FR-009)
 export const TRAIL_MAX = 240;          // points kept for the shell's trail
 export const MUZZLE = 30;              // the shell starts this far from the tank's centre along the cannon
+export const CANNON_H = 18.2;          // the cannon's pivot above the tank's bottom (0.7 of TANK_H)
 export const SETTLE_MIN = 0.6;         // an explosion shows at least this long before the next turn
 export const FALL_OUT = WORLD_H + 80;  // past this a falling thing has left the screen
 
 // snow and ice (FR-011)
 export const SLIDE = 24;
 export const ICE_SLIDE_FACTOR = 1.3;
+export const GROUND_SLIDE_FACTOR = 0.5; // on earth and wood a low-grip tank still rolls on a little after letting go
 export const SLIDE_SPEED = 90;
 export const GRIP_SLIDE: Record<Grip, number> = { [Grip.High]: 0, [Grip.Medium]: 0.5, [Grip.Low]: 1 };
 
 // turns (FR-003)
 export const TURN_MS = 30_000;
+export const BIG_COUNT_MS = 10_000;    // the last seconds of a turn are counted down big on screen
 
 // air drops (FR-020, FR-021)
 export const CRATE_FALL_MS = 4000;
 export const CRATE_SIZE = 22;
 export const MAX_CRATES = 3;
-export const DROP_CHANCES: [Drop, number][] = [[Drop.Repair, 35], [Drop.Power, 30], [Drop.GripGear, 30], [Drop.Shield, 5]];
+export const DROP_CHANCES: [Drop, number][] = [[Drop.Repair, 35], [Drop.Power, 25], [Drop.GripGear, 25], [Drop.Shield, 5], [Drop.Missile, 10]];
 export const POWER_SHELL_FACTOR = 1.5;
 export const REPAIR = 10;
+export const MISSILE_DAMAGE_FACTOR = 2;
+export const MISSILE_SPEED_FACTOR = 1.5; // a missile flies this much faster: over twice as far
 
 // computer tanks (FR-012, SC-005)
 export const BOT_THINK_S = 0.9;        // before it acts

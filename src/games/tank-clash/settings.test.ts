@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Difficulty, MapId, Side, TankType } from './enums.ts';
+import { Difficulty, MapId, Side, Style, TankType, Variant } from './enums.ts';
 import { defaults, distinctColors, fixLook, loadSaved, loadSettings, saveSettings } from './settings.ts';
 
 test('defaults when nothing or junk is saved', () => {
@@ -8,27 +8,30 @@ test('defaults when nothing or junk is saved', () => {
   assert.equal(defaults().players[0].type, TankType.Allrounder);
   assert.equal(defaults().tanks, 2);
   assert.equal(defaults().map, MapId.Random);
+  assert.equal(defaults().style, Style.Normal);
 });
 
 test('a saved setup comes back as it was', () => {
-  const s = { ...defaults(), map: MapId.FrostRidge, tanks: 6, difficulty: Difficulty.Hard, muted: true };
-  s.players[0] = { name: 'Ann', color: '#112233', type: TankType.Heavy };
+  const s = { ...defaults(), map: MapId.FrostRidge, tanks: 6, difficulty: Difficulty.Hard, muted: true, style: Style.Arcade };
+  s.players[0] = { name: 'Ann', color: '#112233', type: TankType.Heavy, variant: Variant.C };
   assert.deepEqual(loadSettings(JSON.stringify(s)), s);
 });
 
 test('looks are cleaned field by field; names up to 10 characters; a side is kept only if valid', () => {
   const d = defaults().players[0];
-  assert.deepEqual(fixLook({ name: 'ABCDEFGHIJKLMN', color: 'red', type: 'Tiger' }, d), { ...d, name: 'ABCDEFGHIJ' });
+  assert.deepEqual(fixLook({ name: 'ABCDEFGHIJKLMN', color: 'red', type: 'Tiger', variant: 'Z' }, d), { ...d, name: 'ABCDEFGHIJ' });
+  assert.equal(fixLook({ variant: Variant.A }, d).variant, Variant.A);
+  assert.equal(fixLook({}, { ...d, variant: undefined }).variant, Variant.B, 'no build: B');
   assert.deepEqual(fixLook({ ...d, color: '#ABCDEF', side: Side.Right }, d), { ...d, color: '#abcdef', side: Side.Right });
   assert.deepEqual(fixLook({ ...d, side: 'Middle' }, d), d);
   assert.deepEqual(fixLook(null, d), d);
   assert.deepEqual(fixLook('x', d), d);
 });
 
-test('bad map, tank count, difficulty or mute fall back; saved sides are dropped', () => {
-  const s = loadSettings(JSON.stringify({ map: 'Moon', tanks: 3, difficulty: 'Insane', muted: 'yes',
+test('bad map, tank count, difficulty, mute or style fall back; saved sides are dropped', () => {
+  const s = loadSettings(JSON.stringify({ map: 'Moon', tanks: 3, difficulty: 'Insane', muted: 'yes', style: 'Neon',
     players: [{ ...defaults().players[0], side: Side.Left }] }));
-  assert.deepEqual([s.map, s.tanks, s.difficulty, s.muted], [MapId.Random, 2, Difficulty.Normal, false]);
+  assert.deepEqual([s.map, s.tanks, s.difficulty, s.muted, s.style], [MapId.Random, 2, Difficulty.Normal, false, Style.Normal]);
   assert.equal(s.players[0].side, undefined);
 });
 

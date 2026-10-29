@@ -8,9 +8,9 @@ import { createLobby, type LobbyRoom } from '../../shared/online/lobby.ts';
 import { playerName } from '../../shared/online/roster.ts';
 import { GameSlug } from '../index.ts';
 import { botInput, newMemory, type Memory } from './bots.ts';
-import { DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, ROOM_SIZES, STEP_HZ, TANK_COUNTS } from './constants.ts';
-import { Difficulty, Drop, Hold, MapId, Phase, ResultAction, Screen, Side, TankMsg, TankTab, TankType } from './enums.ts';
-import { BONUS_ICON, drawBattle, drawPreview, groundChanged } from './draw.ts';
+import { BIG_COUNT_MS, DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, ROOM_SIZES, STEP_HZ, TANK_COUNTS } from './constants.ts';
+import { Difficulty, Drop, Hold, MapId, Phase, ResultAction, Screen, Side, Style, TankMsg, TankTab, TankType, Variant } from './enums.ts';
+import { BONUS_ICON, cheer, drawBattle, drawPreview, groundChanged } from './draw.ts';
 import {
   allowedFrom, applySettle, BLAST_CHUNK, beginRows, encodeSettle, nextRunner, parseMessage, randomSide, roomEntries,
   rowsToEntries, sideFree, tanksFor, turnFits, type BeginRow, type Msg, type TurnInfo,
@@ -22,17 +22,18 @@ import {
   activeTank, addCrate, createBattle, DRAW, fire, NO_INPUT, setPose, setTurn, startTurn, step, type Battle, type Entry,
   type Events, type Input, type Owner, type Tank,
 } from './sim.ts';
-import { clampAngle, TANKS, tenths } from './tanks.ts';
+import { clampAngle, clampPower, specOf, tenths } from './tanks.ts';
 import { carve, PLAYABLE_MAPS, type PlayableMap } from './terrain.ts';
 
 const MARKUP = `
 <canvas id="view"></canvas>
 <div id="hud">
-  <div id="bar"><div id="whoseTurn" role="status"></div><div id="timer" role="timer"></div><div id="wind"></div>
+  <div id="bar"><div id="whoseTurn" role="status"></div><div id="timer" role="timer"></div>
     <button id="mute" aria-label="Sound on or off"></button></div>
   <button id="panelToggle" aria-label="Show or hide the tank list" aria-expanded="true">Tanks</button>
   <ul id="panel" aria-label="Tanks"></ul>
   <div id="msg" role="status"></div>
+  <div id="bigCount" aria-hidden="true"></div>
   <div id="controls">
     <button data-hold="${Hold.DriveLeft}" aria-label="Drive left">◀</button><button data-hold="${Hold.DriveRight}" aria-label="Drive right">▶</button>
     <button data-hold="${Hold.AimUp}" aria-label="Raise the cannon">▲</button><button data-hold="${Hold.AimDown}" aria-label="Lower the cannon">▼</button>
@@ -42,11 +43,13 @@ const MARKUP = `
 </div>
 <div id="setup">
   <h1>Tank Clash</h1>
+  <div id="styleRow">Style<br><span id="cStyle"></span></div>
   <div>Players<br><span id="cPlayers"></span></div>
   <div id="editRow">Customise<br><span id="cEdit"></span></div>
   <label>Name <input type="text" id="cName" maxlength="10"></label>
   <label>Colour <input type="color" id="cColor"></label>
   <div>Tank<br><span id="cType"></span></div>
+  <div>Build<br><span id="cVariant"></span></div>
   <canvas id="preview" width="240" height="110" aria-label="Preview"></canvas>
   <div id="stats"></div>
   <div id="colorNote" role="status"></div>
@@ -57,6 +60,7 @@ const MARKUP = `
   <div id="online"></div>
   <div id="keys"></div>
   <button id="go">Start</button>
+  <p id="credits">Sounds from freesound.org: <a href="https://freesound.org/s/121531/" target="_blank" rel="noopener">tracked vehicle</a> by cognito perceptu (CC0), <a href="https://freesound.org/s/127845/" target="_blank" rel="noopener">Tank fire Mixed</a> by GaryQ (CC0), <a href="https://freesound.org/s/396270/" target="_blank" rel="noopener">Exploding Car (with Fire) (Mixed)</a> by EvanBoyerman (<a href="https://creativecommons.org/licenses/by-nc/3.0/" target="_blank" rel="noopener">CC BY-NC 3.0</a>), <a href="https://freesound.org/s/565947/" target="_blank" rel="noopener">10091 water bomb exploding</a> by Robinhood76 (<a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener">CC BY-NC 4.0</a>), <a href="https://freesound.org/s/113989/" target="_blank" rel="noopener">gewonnen</a> and <a href="https://freesound.org/s/113988/" target="_blank" rel="noopener">Verloren</a> by Kastenfrosch (CC0).</p>
 </div>
 <div id="end"><div id="endText"></div></div>`;
 const GAME_VIEWPORT = 'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';
@@ -64,6 +68,7 @@ const MAX_FRAME_S = 0.25;   // a long frame (tab switch) runs at most this much 
 const END_DELAY_S = 1.2;    // the battle's last moments show this long before the result
 const SEND_GAP_MS = 200;    // looks and room picks: at most 5 a second
 const MAX_SEED = 2 ** 31;
+const PREVIEW_SEED = 7;     // the garage preview's battlefield, the same every time
 const SIDE_WAIT_MS = 1500;  // a joiner picks a side by then even if someone hasn't said theirs
 const REJOIN_KEY = 'tc-rejoin';
 const REJOIN_MS = 10 * 60_000; // a saved rejoin key is offered this long (a battle that long is still on, most likely)
@@ -100,7 +105,8 @@ export function mount(root: HTMLElement): () => void {
 
   const cfg = loadSaved();
   const save = () => saveSettings(cfg);
-  const sound = createSound(cfg.muted);
+  const sound = createSound(cfg.muted, cfg.style);
+  root.classList.toggle(Style.Arcade, cfg.style === Style.Arcade); // the CSS class is the style's name
   let mode: PlayerMode = PlayerMode.One, edit = 0, screen: Screen = Screen.Garage;
 
   // --- the battle ---
@@ -213,11 +219,11 @@ export function mount(root: HTMLElement): () => void {
     if (m.t === TankMsg.Turn) { takeTurn(m); rejoining = false; }
     if (m.t === TankMsg.Pose && m.id === b.active && b.phase === Phase.Aim) {
       const t = b.tanks[m.id], dx = m.x - t.x;
-      setPose(b, m.id, m.x, m.angle, m.power, m.fuel);
+      setPose(b, m.id, m.x, m.angle, m.power);
       t.driving = Math.abs(dx) > 0.01 ? Math.sign(dx) : 0;
     }
     if (m.t === TankMsg.Fire && m.id === b.active && b.phase === Phase.Aim) {
-      setPose(b, m.id, m.x, m.angle, m.power, b.tanks[m.id].fuel);
+      setPose(b, m.id, m.x, m.angle, m.power);
       fire(b); sound.fire();
     }
     if (m.t === TankMsg.Settle && !iRun()) {
@@ -225,7 +231,7 @@ export function mount(root: HTMLElement): () => void {
       blastLog.push(...m.blasts);
       applySettle(b, m);
       groundChanged(b.terrain);
-      if (m.got.length) flash(m.got.map(([, d]) => `${d}!`).join(' '));
+      gotten(m.got);
     }
     if (m.t === TankMsg.Drop && !iRun()) addCrate(b, m.id, m.x, null);
     if (m.t === TankMsg.Over) { b.winner = m.winner; b.phase = Phase.Over; }
@@ -262,13 +268,13 @@ export function mount(root: HTMLElement): () => void {
   /** A turn as the runner says (the rest of the round included, so this device can run the battle from here). */
   function takeTurn(t: TurnInfo) {
     if (!b || !turnFits(t, b.tanks.length)) return;
-    setTurn(b, t.id, t.wind, t.left, t.round, t.rest);
+    setTurn(b, t.id, t.left, t.round, t.rest);
     b.tanks[t.id].owner = t.slot < 0 ? null : { slot: t.slot };
     mem = newMemory(); held.clear();
   }
   const turnMsg = () => {
     const t = activeTank(b!);
-    return {t: TankMsg.Turn, id: t.id, slot: t.owner && 'slot' in t.owner ? t.owner.slot : -1, left: Math.round(b!.turnLeftMs), wind: b!.wind,
+    return {t: TankMsg.Turn, id: t.id, slot: t.owner && 'slot' in t.owner ? t.owner.slot : -1, left: Math.round(b!.turnLeftMs),
       round: b!.round, rest: b!.order};
   };
   const sendTurn = () => send(turnMsg());
@@ -294,7 +300,7 @@ export function mount(root: HTMLElement): () => void {
     if (e.code in HELD_KEYS) held.add(HELD_KEYS[e.code]);
     if (e.code in NUDGE_KEYS && b && myTurn()) {
       const t = activeTank(b), [a, p] = NUDGE_KEYS[e.code];
-      t.angle = clampAngle(t.type, Math.round(t.angle) + a); t.power = Math.min(100, Math.max(0, Math.round(t.power) + p));
+      t.angle = clampAngle(t.look, Math.round(t.angle) + a); t.power = clampPower(t.look, Math.round(t.power) + p);
     }
     if (e.code === FIRE_KEY && !e.repeat) fireQueued = true;
   }, {signal});
@@ -307,7 +313,7 @@ export function mount(root: HTMLElement): () => void {
   }
   $('fireBtn').onclick = () => { fireQueued = true; };
   const cPower = $<HTMLInputElement>('cPower');
-  cPower.oninput = () => { if (b && myTurn()) activeTank(b).power = Number(cPower.value); };
+  cPower.oninput = () => { if (b && myTurn()) activeTank(b).power = clampPower(activeTank(b).look, Number(cPower.value)); };
   /** Is this tank played on this device by a person? */
   const mine = (o: Owner) => !!o && ('player' in o || (online() && o.slot === net!.slot));
   const myTurn = () => !!b && b.phase === Phase.Aim && mine(activeTank(b).owner) && activeTank(b).alive;
@@ -327,7 +333,7 @@ export function mount(root: HTMLElement): () => void {
     else fireQueued = false;
     if (online() && battle.phase === Phase.Aim && iDrive(t)) {
       if (input.fire) send({t: TankMsg.Fire, id: t.id, x: t.x, angle: t.angle, power: t.power});
-      else if ((poseT += dt) >= 1 / POSE_HZ) { poseT = 0; send({t: TankMsg.Pose, id: t.id, x: t.x, angle: t.angle, power: t.power, fuel: t.fuel}); }
+      else if ((poseT += dt) >= 1 / POSE_HZ) { poseT = 0; send({t: TankMsg.Pose, id: t.id, x: t.x, angle: t.angle, power: t.power}); }
     }
     const ev = step(battle, input, dt);
     react(ev);
@@ -353,10 +359,16 @@ export function mount(root: HTMLElement): () => void {
   }
   function react(ev: Events) {
     if (ev.fired) sound.fire();
-    for (const [, , r] of ev.blasts) sound.boom(r);
+    // a tank destroyed by the blast (not by a fall) gets the bigger explosion instead of the plain one
+    const killed = ev.destroyed.some(id => !b!.tanks[id].doomed && !b!.tanks[id].gone);
+    if (killed) sound.destroyed(); else for (const [, , r] of ev.blasts) sound.boom(r);
     if (ev.blasts.length) groundChanged(b!.terrain);
     for (const _ of ev.landed) sound.crateLand();
-    if (ev.got.length) flash(ev.got.map(([, d]) => `${d}!`).join(' '));
+    gotten(ev.got);
+  }
+  function gotten(got: [number, Drop][]) {
+    if (got.length) flash(got.map(([, d]) => `${d}!`).join(' '));
+    for (const [id, d] of got) if (d === Drop.Repair) cheer(b!, id, time); // a heart rises from the tank
   }
   let flashText = '', flashT = 0;
   const flash = (text: string) => { flashText = text; flashT = 2; };
@@ -366,7 +378,8 @@ export function mount(root: HTMLElement): () => void {
   function draw() {
     const dpr = Math.min(devicePixelRatio, 2), w = Math.round(view.clientWidth * dpr), h = Math.round(view.clientHeight * dpr);
     if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
-    if (b) drawBattle(ctx, w, h, b, time);
+    const shown = screen === Screen.Garage ? garageView() : b; // the garage previews the chosen map and tanks
+    if (shown) drawBattle(ctx, w, h, shown, time, cfg.style);
   }
   const nameOf = (t: Tank) => {
     if (t.owner && 'player' in t.owner) return t.look.name.trim() || `Player ${t.owner.player + 1}`;
@@ -380,10 +393,12 @@ export function mount(root: HTMLElement): () => void {
     const t = activeTank(b), aiming = b.phase === Phase.Aim;
     $('whoseTurn').textContent = b.phase === Phase.Over ? '' : `${nameOf(t)}'s turn${t.owner ? '' : ' (computer)'}`;
     $('whoseTurn').style.color = t.look.color;
-    $('timer').textContent = aiming ? String(Math.ceil(Math.max(0, b.turnLeftMs) / 1000)) : '';
-    $('wind').textContent = b.wind === 0 ? 'No wind' : `Wind ${b.wind < 0 ? '←' : '→'} ${Math.abs(b.wind)}`;
+    const left = Math.ceil(Math.max(0, b.turnLeftMs) / 1000);
+    $('timer').textContent = aiming ? String(left) : '';
+    $('bigCount').textContent = aiming && b.turnLeftMs <= BIG_COUNT_MS && left > 0 ? String(left) : ''; // big, for the last 10 s
     $('angle').textContent = `Angle ${Math.round(t.angle)}°`;
     $('power').textContent = String(Math.round(t.power));
+    cPower.max = String(specOf(t.look).topPower);
     if (document.activeElement !== cPower) cPower.value = String(Math.round(t.power));
     const yours = myTurn();
     root.classList.toggle('my-turn', yours);
@@ -392,7 +407,7 @@ export function mount(root: HTMLElement): () => void {
     $('mute').textContent = cfg.muted ? '🔇' : '🔊';
     // the life panel (FR-019): by side, hearts drawn and as a number, the active tank highlighted, wrecks marked
     const all = [Side.Left, Side.Right].flatMap(side => b!.tanks.filter(x => x.side === side));
-    const key = JSON.stringify([b.active, aiming, all.map(x => [x.hearts, x.alive, x.gone, x.powerShell, x.shield, x.gripUntil !== null && x.gripUntil >= b!.round, x.look, x.owner])]);
+    const key = JSON.stringify([b.active, aiming, all.map(x => [x.hearts, x.alive, x.gone, x.powerShell, x.shield, x.gripUntil !== null && x.gripUntil >= b!.round, x.missile, x.look, x.owner])]);
     if (key === panelKey) return;
     panelKey = key;
     $('panel').replaceChildren(...[Side.Left, Side.Right].flatMap(side => {
@@ -401,7 +416,7 @@ export function mount(root: HTMLElement): () => void {
     }));
   }
   function row(t: Tank) {
-    const li = document.createElement('li'), spec = TANKS[t.type];
+    const li = document.createElement('li'), spec = specOf(t.look);
     li.className = 'tank';
     li.classList.toggle('active', t.id === b!.active && b!.phase !== Phase.Over && t.alive);
     li.classList.toggle('destroyed', !t.alive);
@@ -418,7 +433,7 @@ export function mount(root: HTMLElement): () => void {
     const num = document.createElement('span'); num.className = 'num'; num.textContent = t.alive ? tenths(t.hearts) : 'destroyed';
     const bonus = document.createElement('span'); bonus.className = 'bonus';
     bonus.textContent = [t.powerShell && BONUS_ICON[Drop.Power], t.shield && BONUS_ICON[Drop.Shield],
-      t.gripUntil !== null && t.gripUntil >= b!.round && BONUS_ICON[Drop.GripGear]].filter(Boolean).join('');
+      t.gripUntil !== null && t.gripUntil >= b!.round && BONUS_ICON[Drop.GripGear], t.missile && BONUS_ICON[Drop.Missile]].filter(Boolean).join('');
     li.append(dot, name, type, hearts, num, bonus);
     return li;
   }
@@ -498,19 +513,34 @@ export function mount(root: HTMLElement): () => void {
   const cName = $<HTMLInputElement>('cName'), cColor = $<HTMLInputElement>('cColor');
   const preview = $<HTMLCanvasElement>('preview').getContext('2d')!;
   function loadInputs() { const p = cfg.players[edit]; cName.value = p.name; cColor.value = p.color; }
+  // the garage's preview (like Turbo Tumble's): the chosen map with this device's tanks on it, rebuilt when they change
+  let stage: Battle | null = null, stageKey = '';
+  function garageView() {
+    const picked = online() && !lobby.isHost() ? picks.map : cfg.map, map = picked === MapId.Random ? MapId.GreenHills : picked;
+    const players: Entry[] = [{ side: mySide ?? Side.Left, owner: { player: 0 }, look: cfg.players[0] }];
+    if (mode === PlayerMode.Two) players.push({ side: Side.Right, owner: { player: 1 }, look: cfg.players[1] });
+    const key = JSON.stringify([map, players.map(e => [e.side, e.look.type, e.look.variant])]);
+    if (key !== stageKey) {
+      stageKey = key;
+      stage = createBattle(seeded(PREVIEW_SEED), map, players);
+      stage.phase = Phase.Over; // nobody's turn: no arrow
+      groundChanged(stage.terrain);
+    }
+    return stage;
+  }
   function refreshGarage(note = '') {
-    const p: TankLook = cfg.players[edit], spec = TANKS[p.type], guest = online() && !lobby.isHost();
+    const p: TankLook = cfg.players[edit], spec = specOf(p), guest = online() && !lobby.isHost();
     const shown = guest ? picks : { map: cfg.map, tanks: online() ? roomTanks() : cfg.tanks, level: cfg.difficulty };
     const on = (id: string, value: string | undefined) => [...$(id).children].forEach(x => x.classList.toggle('on', x.textContent === value));
-    on('cPlayers', mode); on('cType', p.type); on('cTanks', String(shown.tanks)); on('cMap', shown.map); on('cLevel', shown.level); on('cSide', mySide);
+    on('cStyle', cfg.style); on('cPlayers', mode); on('cType', p.type); on('cVariant', p.variant); on('cTanks', String(shown.tanks)); on('cMap', shown.map); on('cLevel', shown.level); on('cSide', mySide);
     for (const id of ['cTanks', 'cMap', 'cLevel']) [...$(id).children].forEach(x => { (x as HTMLButtonElement).disabled = guest; });
     [...$('cEdit').children].forEach((x, i) => x.classList.toggle('on', i === edit));
     $('editRow').style.display = mode === PlayerMode.Two ? '' : 'none';
     $('sideRow').style.display = online() ? '' : 'none';
-    $('stats').textContent = `Cannon ${spec.minAngle}°–${spec.maxAngle}° · Damage ${tenths(spec.damage)} · Hearts ${spec.hearts / 10} · Grip ${spec.grip}`;
+    $('stats').textContent = `Cannon ${spec.minAngle}°–${spec.maxAngle}° · Damage ${tenths(spec.damage)} · Top power ${spec.topPower} · Hearts ${spec.hearts / 10} · Grip ${spec.grip} · Speed ${spec.speed}`;
     $('keys').textContent = KEY_HELP;
     $('colorNote').textContent = note;
-    drawPreview(preview, p.type, p.color);
+    drawPreview(preview, p.type, p.color, cfg.style);
     save(); sendLook(); lobby.render(); // the popup and waiting room, then garageInfo()
     if (online() && lobby.isHost()) sendMode();
   }
@@ -529,6 +559,7 @@ export function mount(root: HTMLElement): () => void {
   cName.oninput = () => { cfg.players[edit].name = cName.value; changed(); };
   cColor.oninput = () => { cfg.players[edit].color = cColor.value; changed(); };
   optRow('cType', values(TankType), v => { cfg.players[edit].type = v; refreshGarage(); });
+  optRow('cVariant', values(Variant), v => { cfg.players[edit].variant = v; refreshGarage(); });
   optRow('cSide', values(Side), v => { // switch side while it has a free place (FR-006)
     if (v === mySide) return;
     if (!sideFree(sides(net?.slot), roomTanks(), v)) return refreshGarage(`The ${v} side is full`);
@@ -537,6 +568,9 @@ export function mount(root: HTMLElement): () => void {
   optRow('cTanks', TANK_COUNTS.map(String), v => { cfg.tanks = Number(v); refreshGarage(); });
   optRow('cMap', values(MapId), v => { cfg.map = v; refreshGarage(); });
   optRow('cLevel', values(Difficulty), v => { cfg.difficulty = v; refreshGarage(); });
+  optRow('cStyle', values(Style), v => { // the look and sounds: normal or pixel-art arcade
+    cfg.style = v; root.classList.toggle(Style.Arcade, v === Style.Arcade); sound.setStyle(v); refreshGarage();
+  });
   optRow('cEdit', values(TankTab), tab => { edit = values(TankTab).indexOf(tab); loadInputs(); refreshGarage(); });
   optRow('cPlayers', MODES, m => { mode = m; edit = 0; lobby.setActive(m === PlayerMode.Online); loadInputs(); garage(); });
   $('go').onclick = startGame;

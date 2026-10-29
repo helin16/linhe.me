@@ -1,13 +1,13 @@
 // Tank Clash's saved choices on this device: both players' tanks (type, name, colour), map, tank count, difficulty
-// and mute. Anything malformed falls back to its default, field by field.
+// mute and style. Anything malformed falls back to its default, field by field.
 import { isMember } from '../../shared/enum.ts';
 import { DEFAULT_TANKS, TANK_COUNTS } from './constants.ts';
-import { Difficulty, MapId, Side, TankType } from './enums.ts';
-import { DEFAULT_TYPE } from './tanks.ts';
+import { Difficulty, MapId, Side, Style, TankType, Variant } from './enums.ts';
+import { DEFAULT_TYPE, DEFAULT_VARIANT } from './tanks.ts';
 
 /** A player's tank as picked in the garage; online it also carries the side they chose. */
-export type TankLook = { name: string; color: string; type: TankType; side?: Side };
-export type Settings = { players: [TankLook, TankLook]; map: MapId; tanks: number; difficulty: Difficulty; muted: boolean };
+export type TankLook = { name: string; color: string; type: TankType; variant?: Variant; side?: Side };
+export type Settings = { players: [TankLook, TankLook]; map: MapId; tanks: number; difficulty: Difficulty; muted: boolean; style: Style };
 
 const KEY = 'tc-cfg';
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -16,10 +16,10 @@ const OTHER_COLOR = '#ffcc00'; // player 2's colour when it would match player 1
 
 export const defaults = (): Settings => ({
   players: [
-    { name: 'Player 1', color: '#4caf50', type: DEFAULT_TYPE },
-    { name: 'Player 2', color: '#e53935', type: DEFAULT_TYPE },
+    { name: 'Player 1', color: '#4caf50', type: DEFAULT_TYPE, variant: DEFAULT_VARIANT },
+    { name: 'Player 2', color: '#e53935', type: DEFAULT_TYPE, variant: DEFAULT_VARIANT },
   ],
-  map: MapId.Random, tanks: DEFAULT_TANKS, difficulty: Difficulty.Normal, muted: false,
+  map: MapId.Random, tanks: DEFAULT_TANKS, difficulty: Difficulty.Normal, muted: false, style: Style.Normal,
 });
 
 export function fixLook(p: unknown, d: TankLook): TankLook {
@@ -28,6 +28,7 @@ export function fixLook(p: unknown, d: TankLook): TankLook {
     name: typeof o.name === 'string' ? o.name.slice(0, MAX_NAME) : d.name,
     color: typeof o.color === 'string' && HEX.test(o.color) ? o.color.toLowerCase() : d.color,
     type: isMember(TankType, o.type) ? o.type : d.type,
+    variant: isMember(Variant, o.variant) ? o.variant : d.variant ?? DEFAULT_VARIANT,
   };
   if (isMember(Side, o.side)) look.side = o.side;
   return look;
@@ -56,6 +57,7 @@ export function loadSettings(raw: string | null): Settings {
     tanks: TANK_COUNTS.includes(s.tanks as number) ? s.tanks as number : d.tanks,
     difficulty: isMember(Difficulty, s.difficulty) ? s.difficulty : d.difficulty,
     muted: s.muted === true,
+    style: isMember(Style, s.style) ? s.style : d.style,
   };
 }
 

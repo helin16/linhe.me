@@ -13,7 +13,7 @@
 An original game in the turn-based artillery genre that Scorched Earth belongs to, not a copy of
 it: its own name, look, art and rules. The battlefield is seen from the side and fits on one
 screen: hills of ground, with tanks sitting on top. On its turn a tank can drive a little, tilt its
-cannon, set the shot's power and fire; the shell flies in an arc, pushed by the wind, and blows a
+cannon, set the shot's power and fire; the shell flies in an arc and blows a
 hole in the ground where it lands. Nothing (name, logo, graphics, sounds, text) is taken from
 Scorched Earth or any other game.
 
@@ -51,6 +51,10 @@ cartoon explosions with smoke. Original art; nothing copied from those games.
 - Q: Is the shell's flight path shown? → A: Yes, as a trail behind the shell while it flies, fading out from the tank end towards the shell, until it explodes.
 - Q: Where do tanks start? → A: At random spots on their side's half (Left or Right), different every game.
 - Q: Are there pick-ups? → A: After every round (all tanks have fired once) an air drop floats slowly down at a random spot: a repair kit (+hearts), a power shell (more damage on the next shot), grip gear (better grip for the next round) or, very rarely, a shield that blocks all damage once.
+- Q: How does a tank show what it picked up, and is there a missile? → A: Repair: a heart rises and fades above the tank; power shell: a golden ring around it; grip gear: shiny gold wheels; shield: a shiny gold outline. A new Missile drop sits on top of the tank and, when fired, flies very far and does double damage.
+- Q: Which sounds should the game use? → A: Recorded clips from freesound.org: "tracked vehicle.wav" for driving, "Tank fire Mixed.wav" for firing, "Exploding Car (with Fire) (Mixed)" when a shell or missile destroys a tank, "10091 water bomb exploding.wav" for other blasts; credited in the garage.
+- Q: Can players pick a different look? → A: Yes: a Style switch at the top of the garage, Normal (default, the cartoon look with the recorded clips) or Arcade (pixel-art tanks and battlefields, a pixel font and bevelled buttons, retro made-here sounds); remembered on this device.
+- Q: Does the battlefield's background fill the screen? → A: Yes, at any window size: the field (tanks and hills) is scaled to fit, and the sky, scenery and ground carry on to the screen's edges.
 - Q: What should the tanks look like? → A: Like the owner's reference pictures: chunky cartoon tanks with big tracks, armour plates and big cannons, in original designs (see Style).
 - Q: What should the maps look like? → A: Bright cartoon rolling hills like the owner's reference pictures; each game the number of hills, their heights (never too high) and the snow and water areas are random, but water is never under a tank at the start.
 - Q: Can all ground be destroyed? → A: Yes: on every map, earth, wood and ice can be blown away by shells; once all of it is gone under a tank, the tank falls out of the screen and is destroyed at once.
@@ -62,11 +66,19 @@ cartoon explosions with smoke. Original art; nothing copied from those games.
 - Q: How do players see which tank is playing? → A: The active tank (the one that can move and fire) is highlighted on the battlefield, as well as in the life panel.
 - Q: Online, what happens to the tank of a player who leaves or drops? → A: A computer takes it over, keeping its hearts and bonuses; if the player reconnects during the battle, they take it back from its next turn.
 - Q: Online, can players choose their side? → A: Yes: each player is put on a random side by default, and can switch to the other side in the waiting room while it has room.
-- Q: How are the sides told apart, and which way can tanks fire? → A: There's no side colour: each tank keeps its own colour (health bar and glow included). Left tanks always face and fire only to the right, Right tanks only to the left.
-- Q: Can a tank drive past the middle into the enemy's half, or through other tanks? → A: No: each tank stays in its own side's half (stopping at the middle line) and stops when it bumps another tank.
+- Q: How are the sides told apart, and which way can tanks fire? → A: There's no side colour: each tank keeps its own colour (health bar included). Left tanks always face and fire only to the right, Right tanks only to the left.
+- Q: Can a tank drive past the middle into the enemy's half, or through other tanks? → A: It can cross the middle into the enemy's half (no middle line is drawn), but never through other tanks: it stops when it bumps one.
 - Q: Which sound effects should there be? → A: Firing, a tank moving, explosions, an air drop landing, and winning.
 - Q: What happens to a destroyed tank? → A: Its steel wreck stays on the map and takes no damage; it only goes when the ground under it is blown away, then it falls (off the screen and disappears if nothing is left below).
 - Q: Online, can players all switch onto the same side? → A: Yes, as long as that side has a free place (half the tanks); friends can team up against computer tanks.
+- Q: How does a tank sit on a slope? → A: Tilted to follow the ground under it, and only where there's ground under its middle (it never hangs on by a corner).
+- Q: How far can a tank drive on its turn? → A: As much as it likes until it fires or time runs out (no fuel); heavier tanks drive slower, lighter ones faster. The last 10 seconds show a big countdown.
+- Q: How does grip change driving? → A: High grip drives slower but stops dead when the drive key is let go; low grip drives faster but rolls on a little after letting go.
+- Q: Is there wind? → A: No.
+- Q: How is the active tank highlighted on the battlefield? → A: Only by a bobbing arrow above it; no outline or circle.
+- Q: Does the garage preview the choices? → A: Yes, like Turbo Tumble: the chosen map and the tanks are shown behind the garage.
+- Q: Can a tank type be tuned? → A: Yes: each type has builds A, B (standard) and C; A tilts its cannon further but hits softer, C tilts less but hits harder.
+- Q: Does a harder-hitting gun reach as far? → A: No: each gun has its own reach; tanks and builds that hit harder have a lower top power, so they can't fire as far. Damage doesn't change with distance.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -88,16 +100,17 @@ it: "You win" and "Play again".
 **Acceptance Scenarios**:
 
 1. **Given** the game page, **When** a player starts 1 Player with the defaults, **Then** a
-   battlefield appears with the player's tank and one computer tank on opposite sides, the wind's
-   direction and strength, the life panel listing both tanks with their hearts, and a name and
+   battlefield appears with the player's tank and one computer tank on opposite sides, the life panel listing both tanks with their hearts, and a name and
    small health bar above each tank.
 2. **Given** the player's turn, **When** they change the cannon's angle or the shot's power,
    **Then** the cannon tilts on screen and the angle and power are shown as numbers; the angle
-   can't go past the limits of their tank type and always points towards the enemy side.
+   can't go past the limits of their tank type and always points towards the enemy side, and the
+   power can't go past their tank's top power.
 3. **Given** the player's turn, **When** they drive left or right, **Then** the tank moves along
-   the ground, climbing gentle slopes but not steep ones, until its fuel for this turn runs out.
+   the ground, tilted to the slope, climbing gentle slopes but not steep ones, for as long as the
+   turn lasts, at its type's speed.
 4. **Given** the player's turn, **When** they fire, **Then** the shell flies in an arc affected by
-   gravity and wind, leaving a trail along the path it has flown: faintest at the tank end and
+   gravity, leaving a trail along the path it has flown: faintest at the tank end and
    strongest right behind the shell, so the older part fades away. Where it hits the ground it
    blows a round hole, and the trail disappears with the explosion.
 5. **Given** a shell blast that reaches a tank, **When** it explodes, **Then** that tank loses as
@@ -127,7 +140,8 @@ it: "You win" and "Play again".
 11. **Given** a computer tank's turn, **When** it plays, **Then** it aims and fires on its own
     within a few seconds, at the difficulty picked (Easy, Normal or Hard).
 12. **Given** any tank's turn, **When** it starts, **Then** a 30-second countdown shows on screen
-    and every other tank waits; **when** the countdown reaches 0 without a shot, **Then** the turn
+    and every other tank waits; in the last 10 seconds a big countdown shows in the middle of the
+    screen; **when** the countdown reaches 0 without a shot, **Then** the turn
     passes to the next tank with no shot fired.
 13. **Given** sound on, **When** a tank drives, fires, a shell explodes, a crate lands or the
     player's side wins, **Then** the matching sound plays (engine rumble only while driving);
@@ -152,7 +166,7 @@ has computer teammates against the other player's side.
 1. **Given** 2 Players with 2 tanks, **When** the game starts, **Then** both players' tanks appear
    on opposite sides and player 1 goes first.
 2. **Given** a turn, **When** it starts, **Then** the screen clearly shows whose turn it is (name and
-   colour), the active tank glows and has an arrow above it on the battlefield and is highlighted
+   colour), the active tank has a bobbing arrow above it on the battlefield and is highlighted
    in the life panel, and only that player's controls act.
 3. **Given** a player's tank is destroyed, **When** only the other player's tank is left, **Then**
    that player wins.
@@ -165,9 +179,10 @@ has computer teammates against the other player's side.
 ### User Story 3 - Choose and customise your tank (Priority: P1)
 
 Before playing, each player opens the garage (like Turbo Tumble's) and picks a tank type, which
-sets how far its cannon can tilt, how much damage its shells do, how many hearts it has and how
-well it grips on snow and ice, and gives it a name and colour. A live preview and the tank's four
-stats are shown. In 2 Players
+sets how many hearts it has, how fast it drives and how well it grips, and a build (A, B or C)
+that sets how far its cannon can tilt, how hard its shells hit and how far they can reach; and gives
+it a name and colour. A live preview (the chosen map with the tanks on it) and the tank's stats are
+shown. In 2 Players
 there's a tab for each player. Choices are remembered on this device and shown to others online.
 
 **Why this priority**: Explicitly requested; tank types give each player a different way to play.
@@ -177,10 +192,10 @@ there's a tab for each player. Choices are remembered on this device and shown t
 
 **Acceptance Scenarios**:
 
-1. **Given** the garage, **When** the player picks a tank type, **Then** the preview and its stats
-   (angle range, damage, hearts, grip) update immediately.
-2. **Given** a game, **When** it starts, **Then** each tank has the hearts, damage and angle limits
-   of its type.
+1. **Given** the garage, **When** the player picks a tank type or build, **Then** the preview and
+   its stats (angle range, damage, top power, hearts, grip, speed) update immediately.
+2. **Given** a game, **When** it starts, **Then** each tank has the hearts, damage, top power and
+   angle limits of its type and build.
 3. **Given** the garage, **When** the player changes name or colour, **Then** the preview updates,
    and the choices are back after reloading.
 4. **Given** 2 Players, **When** both pick the same colour, **Then** player 2's colour is changed
@@ -215,7 +230,8 @@ it: the wood breaks, the tank falls and is destroyed at once.
 6. **Given** a tank on snow or ice, **When** it stops driving, **Then** it slides on a bit further
    in the direction it was going; **when** it fires, **Then** the kick slides it back a bit, away
    from where the cannon points. How far depends on its grip (a Heavy slides a bit, a Scout not
-   at all) and is a little more on ice. A tank standing still and not firing never slides, even on
+   at all) and is a little more on ice (on earth a low-grip tank still rolls on a little after
+   driving, FR-011). A tank standing still and not firing never slides, even on
    a slope.
 7. **Given** the same map picked twice, **When** each game starts, **Then** the number of hills,
    their heights and where the snow or water areas are (and how many and how big) are different
@@ -329,14 +345,13 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
 ### Edge Cases
 
 - A tank only ever moves left or right, following the ground's surface; it can't climb slopes
-  steeper than a set limit and stops at the screen's edges, at the middle line (it never leaves its
-  side's half) and when it bumps another tank. It moves down only by falling or dropping when the
-  ground beneath it goes. Sliding on snow or ice also stops at the middle line and at other tanks.
-- A crate that lands in a side's half can only be reached by that side's tanks; one landing right
-  on the middle line can be picked up from either side.
+  steeper than a set limit and stops at the screen's edges and when it bumps another tank; it may
+  cross the middle into the enemy's half. It moves down only by falling or dropping when the
+  ground beneath it goes. Sliding also stops at other tanks.
+- Any tank can pick up any crate it reaches, on either half.
 - A shell that flies off the top of the screen keeps going and comes back down (shown by a marker
   at the top edge).
-- A tank can be hurt by its own shell (e.g. a steep shot blown back by the wind), and by teammates' shells.
+- A tank can be hurt by its own shell (e.g. a steep shot that comes straight back down), and by teammates' shells.
 - Several tanks hit by one blast all lose hearts, teammates included; if both sides' last tanks are
   destroyed by the same shot, it's a draw.
 - Online with an odd number of players (e.g. 3 in a 4-tank game), one side has one more person and
@@ -359,7 +374,7 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   that player.
 - The countdown stops once a shell is fired; the next turn starts after the shell and any falling
   tanks have settled.
-- Resize or rotate: the whole battlefield stays visible with no scrolling.
+- Resize or rotate: the whole battlefield stays visible with no scrolling, scaled to fit; the sky, scenery and ground fill the rest of the screen (no empty bands).
 - Blank names show "Player 1" / "Player 2".
 - Hearts left are shown to one decimal place (e.g. 0.6); a tank with any hearts above 0 is still
   in, however small.
@@ -378,14 +393,15 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   filled by computer tanks.
 - **FR-003**: Tanks MUST take turns in a fixed order shown on screen; destroyed tanks are skipped.
   Only one tank acts at a time; all others wait. On its turn a tank can drive left or right
-  along the ground within its own side's half (it stops at the middle line, at the screen's edge
-  and when it bumps another tank; tanks never pass through each other; no other movement: no
-  jumping, no flying; limited fuel per turn), change
-  cannon angle within its type's limits, change power, and fire once; firing ends its
-  turn. Every turn, in every mode, MUST last at most 30 seconds, with a countdown on screen; at 0
-  the turn passes with no shot.
-- **FR-004**: Shells MUST fly in an arc under gravity and a wind that changes each turn, shown on
-  screen. A shell explodes where it hits ground or a tank, removing a round piece of ground.
+  along the ground, any time and as much as it likes until it fires (it may cross the middle into
+  the enemy's half; it stops at the screen's edge and when it bumps another tank; tanks never pass
+  through each other; no other movement: no jumping, no flying), at its type's speed (heavier
+  drives slower, lighter faster); change cannon angle within its type and build's limits, change
+  power up to its top power, and fire once; firing ends its turn. A tank MUST sit tilted to the
+  ground under it and needs ground under its middle to stand (it never hangs on by a corner).
+  Every turn, in every mode, MUST last at most 30 seconds, with a countdown on screen and a big
+  countdown in the middle of the screen for the last 10 seconds; at 0 the turn passes with no shot.
+- **FR-004**: Shells MUST fly in an arc under gravity only (there is no wind). A shell explodes where it hits ground or a tank, removing a round piece of ground.
   While a shell flies, a trail MUST show the path it has flown, fading from faint at the tank end
   to full strength just behind the shell; the trail MUST vanish when the shell explodes (or leaves
   play), and every player sees the same trail online. There MUST be no aiming guide or predicted
@@ -402,22 +418,35 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   2 seconds. Sides are fixed once the battle starts. In each round every tank still in MUST get exactly one turn: turns
   alternate Left, Right while both sides have tanks yet to play this round, then the remaining
   tanks of the bigger side play one after another (Left 1 vs Right 3 → L, R, R, R).
-- **FR-007**: The garage MUST offer these tank types, each with a preview and its stats:
+- **FR-007**: The garage MUST offer these tank types, each with its stats, in front of a preview of
+  the chosen map (Random shows Green Hills) with the tanks on it:
 
-  | Tank | Cannon angle | Damage per hit | Hearts | Grip on snow/ice |
-  |------|--------------|----------------|--------|------------------|
-  | Scout | 0°–85° (widest) | 0.8 | 3 | High (doesn't slide) |
-  | Allrounder (default) | 10°–75° | 1.0 | 4 | Medium (slides a little) |
-  | Heavy | 30°–65° (narrowest) | 1.5 | 5 | Low (slides a bit) |
-  | Artillery | 30°–80° (high lobs) | 1.8 | 3 | Low (slides a bit) |
+  | Tank | Hearts | Grip | Speed |
+  |------|--------|------|-------|
+  | Scout | 3 | High | 85 |
+  | Allrounder (default) | 4 | Medium | 75 |
+  | Heavy | 5 | Low | 60 |
+  | Artillery | 3 | Low | 105 |
+
+  Each type comes in three builds; B (default) is standard, A tilts 5° further each way and hits
+  softer (×0.8), C tilts 8° less each way and hits harder (×1.25); angles stay within 0°–85°.
+  Harder hits reach less far: a tank's top power is 100 − 12 × (damage − 0.6), rounded, and never
+  above 100 (power 100 at 45° crosses the battlefield):
+
+  | Tank | A: angle · damage · top power | B | C |
+  |------|-------------------------------|---|---|
+  | Scout | 0°–85° · 0.6 · 100 | 5°–80° · 0.8 · 98 | 13°–72° · 1.0 · 95 |
+  | Allrounder | 5°–80° · 0.8 · 98 | 10°–75° · 1.0 · 95 | 18°–67° · 1.3 · 92 |
+  | Heavy | 25°–70° · 1.2 · 93 | 30°–65° · 1.5 · 89 | 38°–57° · 1.9 · 84 |
+  | Artillery | 25°–85° · 1.4 · 90 | 30°–80° · 1.8 · 86 | 38°–72° · 2.3 · 80 |
 
   Angles are measured from flat ground towards the enemy side (0° = flat towards the enemy, 90° =
   straight up). Every tank always faces the enemy side: Left tanks face and fire only to the
   right, Right tanks only to the left; no angle reaches straight up or backwards, and driving
   either way never turns a tank around.
 
-  Good grip always comes with lighter damage: no tank with more than 1.0 damage has better than
-  Low grip.
+  Good grip comes with lighter damage: no B build with more than 1.0 damage has better than Low
+  grip.
 
   Each player also sets a name (up to 10 characters) and a colour; choices are remembered on this
   device; on one device two players' colours MUST differ.
@@ -436,13 +465,13 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   tank drops onto what is left below. It is destroyed at once if it was on wood, if it drops into
   water, or if nothing is left beneath it (it falls out of the bottom of the screen).
 - **FR-010**: Tanks MUST NOT drive into water; shells that land in water do nothing.
-- **FR-011**: On snow or ice a tank MUST slide only in two cases: a short way on after it stops
-  driving, and a short way back from its cannon's direction when it fires. The distance is set by
-  its type's grip (FR-007: High none, Medium a little, Low a bit — never more than about a tank's
-  length) and is slightly longer on ice. A tank that is standing still and not firing MUST NOT
+- **FR-011**: A tank MUST slide only in two cases: a short way on after the drive key is let go
+  (on any ground, longest on ice, shortest on earth), and, on snow or ice, a short way back from its
+  cannon's direction when it fires. The distance is set by its type's grip (FR-007: High stops dead,
+  Medium a little, Low a bit — never more than about a tank's length). A tank that is standing still and not firing MUST NOT
   slide, even on a slope. Sliding never takes a tank into water; it stops at the edge.
 - **FR-012**: Computer tanks MUST play at a chosen difficulty: Easy (big aiming errors), Normal
-  (default), Hard (nearly exact aim, allows for wind). Picked by player 1 offline and by the host
+  (default), Hard (nearly exact aim). Picked by player 1 offline and by the host
   online; remembered on this device.
 - **FR-013**: Controls: keyboard — ←/→ drive, ↑/↓ cannon angle, Q/E (or −/+) power, Space fire;
   the same keys for whoever's turn it is. Touch: on-screen buttons to drive and tilt, a power
@@ -462,7 +491,7 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   room (kept on that device until the battle ends); nobody else can claim the tank.
 - **FR-017**: When online play isn't available the game MUST say so within 5 seconds and keep
   1 Player and 2 Players usable.
-- **FR-018**: The game's name, look, art and sounds MUST be original. Tanks MUST follow the "Tank
+- **FR-018**: The game's name, look and art MUST be original; sounds follow FR-024 (made by the game or credited free clips, never taken from another game). Tanks MUST follow the "Tank
   look" in Style: chunky cartoon tanks, one distinct silhouette per tank type, painted in the
   player's colour, in the garage preview and on the battlefield.
 - **FR-019**: A life panel MUST stay on screen during every battle, in every mode, listing every
@@ -474,8 +503,8 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   its name and a small health bar (hearts left out of its starting hearts, in the tank's own colour)
   just above it, moving with it and updating with the panel.
 - **FR-023**: The active tank (the one whose turn it is, which alone can move and fire) MUST be
-  highlighted on the battlefield, in every mode: a glowing outline in the tank's own colour and a
-  bobbing arrow above its health bar, both shown from the start of its turn until it fires or the
+  highlighted on the battlefield, in every mode: a bobbing arrow above its health bar (no outline
+  or circle), shown from the start of its turn until it fires or the
   countdown runs out, and on no other tank. It is highlighted in the life panel at the same time.
 - **FR-020**: After every round (each tank still in has had one turn), one crate MUST drop by
   parachute at a random spot, drifting slowly down over a few seconds while play goes on, and stay
@@ -486,20 +515,35 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
 
   | Drop | Chance | Effect |
   |------|--------|--------|
-  | Repair kit | 35% | +1 heart, up to the tank type's starting hearts |
-  | Power shell | 30% | Next shot does 1.5× damage, then back to normal |
-  | Grip gear | 30% | High grip (no sliding) until the end of the next round |
-  | Shield | 5% (rare) | Blocks all damage from the next blast that reaches the tank, then used up; doesn't stop a fall off wood or into water |
+  | Drop | Chance | Effect | On the battlefield |
+  |------|--------|--------|--------------------|
+  | Repair kit | 35% | +1 heart, up to the tank type's starting hearts | A heart rises from the tank and fades out above it |
+  | Power shell | 25% | Next shot does 1.5× damage, then back to normal | A shining golden ring around the tank until it fires |
+  | Grip gear | 25% | High grip (no sliding) until the end of the next round | The tank's wheels turn shiny gold while it lasts |
+  | Shield | 5% (rare) | Blocks all damage from the next blast that reaches the tank, then used up; doesn't stop a fall off wood or into water | The tank's outline turns shiny gold until it's used |
+  | Missile | 10% | Next shot is a missile: it flies 1.5× as fast (over twice as far) and does 2× damage (3× with a power shell too) | A missile sits on top of the tank; the shot flies as a missile with a flame |
 
-  A tank holds at most one power shell and one shield at a time.
+  A tank holds at most one of each (power shell, shield, missile) at a time.
 - **FR-022**: Computer tanks MUST go for crates within reach on their turn when it doesn't stop them
   firing, and online every device MUST see the same crates, contents and pick-ups.
 - **FR-024**: The game MUST play sound effects for: a tank firing; a tank moving (an engine rumble
   while it drives, stopping when it stops); an explosion (also when a crate is blown up); an air
   drop landing; and a fanfare when a battle is won (a softer tune for a loss or draw). Online,
-  every device plays them for every tank's actions. Sounds MUST be original (made by the game, not
-  taken from other games), start only after the player's first tap or key press (browser rule), and
+  every device plays them for every tank's actions. A tank destroyed by a blast (not by a fall) MUST
+  get a bigger, burning explosion instead of the plain one. Firing, driving, blasts and a tank
+  destroyed MUST use these recorded clips from freesound.org: "tracked vehicle.wav" (cognito
+  perceptu, CC0) for driving, "Tank fire Mixed.wav" (GaryQ, CC0) for firing, "10091 water bomb
+  exploding.wav" (Robinhood76, CC BY-NC 4.0) for blasts and "Exploding Car (with Fire) (Mixed)"
+  (EvanBoyerman, CC BY-NC 3.0) for a tank destroyed, "gewonnen.mp3" and "Verloren.mp3"
+  (Kastenfrosch, CC0) for winning and losing; the garage MUST credit them all (title, author,
+  link, licence), and because two are non-commercial the game MUST stay free with no ads. Other
+  sounds are made by the game. No sound is taken from another game. Sounds start only after the player's first tap or key press (browser rule), and
   a mute button MUST silence them all, remembered on this device.
+- **FR-026**: The garage MUST offer a Style switch at the top of its panel: Normal (default) or Arcade,
+  remembered on this device and applying to this device only. Arcade MUST draw pixel-art tanks (one
+  sprite per type in the player's colour, cannons at the tank's angle, bonuses shown as in FR-021),
+  pixel-art scenery and ground for every map, a pixel font with square bevelled buttons and panels,
+  and play retro sounds made by the game instead of the recorded clips. Gameplay is the same in both.
 - **FR-025**: A tank destroyed by losing its hearts MUST leave a steel wreck in its place. A wreck
   MUST take no damage and never be pushed by blasts; shells explode on it as on ground; tanks
   can't drive or slide through it and crates rest on it. It has no hearts, no turns and no health
@@ -510,18 +554,19 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
 
 ### Key Entities
 
-- **Battlefield**: the map picked, the ground shape (dirt, wood, snow, water areas), wind.
+- **Battlefield**: the map picked, the ground shape (dirt, wood, snow, water areas).
 - **Map**: name, its features (dirt, wooden bridges, lakes, snow, ice) and their allowed counts;
   each game's battlefield is generated from it (number and heights of hills, feature areas).
-- **Tank type**: name, cannon angle range, damage per hit, hearts, grip on snow/ice.
+- **Tank type**: name, hearts, grip, speed; per build (A, B, C): cannon angle range, damage per
+  hit, top power.
 - **Side**: Left or Right; its tanks.
 - **Tank**: side, owner (player 1, player 2, an online player, or computer), type, name, colour,
-  position, facing (fixed by side: Left faces right, Right faces left), cannon angle, power, hearts left (may be fractional), fuel left this turn,
+  type and build, position, tilt, facing (fixed by side: Left faces right, Right faces left), cannon angle, power, hearts left (may be fractional),
   destroyed or not.
 - **Wreck**: what's left of a tank destroyed by losing its hearts: position and look (blackened);
   indestructible, falls only when the ground beneath it goes.
 - **Shell**: position, speed and direction, damage, who fired it.
-- **Battle**: tanks in turn order, whose turn, round number, wind this turn, turn countdown,
+- **Battle**: tanks in turn order, whose turn, round number, turn countdown,
   crates on the battlefield, winner.
 - **Round**: one pass of the turn order in which every tank still in has had one turn; an air drop
   follows each.
@@ -530,7 +575,7 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
 - **Bonus held by a tank**: power shell (until its next shot), grip gear (until the end of the next
   round), shield (until the next blast that reaches it).
 - **Room (online)**: size 2–10, players, and the host's choices (map, tank count, difficulty).
-- **Settings (per device)**: tank choice, name and colour for players 1 and 2, map, tank count,
+- **Settings (per device)**: tank type and build, name and colour for players 1 and 2, map, tank count,
   difficulty, sound on/off.
 
 ## Success Criteria *(mandatory)*
@@ -562,9 +607,10 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
 - Air drop chances, the 1.5× power shell and the 3-crate limit are first guesses, to be tuned.
 - Dropping onto earth, snow or ice that is still there does no damage; only falling off wood, into
   water or out of the bottom of the screen destroys a tank.
-- Tank types are balanced against each other by trading angle range, damage and hearts (FR-007);
+- Tank types are balanced against each other by trading angle range, damage, reach, hearts, grip
+  and speed (FR-007);
   the exact numbers can be tuned during planning.
 - Sound effects are short and simple (FR-024); there is no background music.
-- Opening the game with `?seed=<number>` fixes the battlefield shape, wind, tank positions and air
+- Opening the game with `?seed=<number>` fixes the battlefield shape, tank positions and air
   drops (where and what) in
   1 Player and 2 Players so a game can be replayed and tested exactly; it is ignored online.

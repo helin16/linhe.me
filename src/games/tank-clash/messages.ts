@@ -8,7 +8,7 @@ import { Difficulty, Drop, MapId, Side, TankMsg } from './enums.ts';
 import type { Random } from './seed.ts';
 import { defaults, fixLook, type TankLook } from './settings.ts';
 import { DRAW, type Battle, type Entry, type Winner } from './sim.ts';
-import { TANKS } from './tanks.ts';
+import { specOf } from './tanks.ts';
 import type { PlayableMap } from './terrain.ts';
 
 export const MAX_TANKS = 10;
@@ -21,15 +21,15 @@ const RUNNER_ONLY: string[] = [TankMsg.Begin, TankMsg.Turn, TankMsg.Settle, Tank
 
 export type BeginRow = [number, number, Side, TankLook];
 /** A turn as the runner has it (its aim flag: 1 while the tank is still aiming, 0 mid-shot). */
-export type TurnInfo = { id: number; slot: number; left: number; wind: number; round: number; rest: number[]; aim?: number };                    // id, slot (−1 computer), side, look
-export type TankRow = [number, number, number, number, number, number, number, number, number]; // id, x, y, hearts, alive, gone, power shell, shield, gripUntil
+export type TurnInfo = { id: number; slot: number; left: number; round: number; rest: number[]; aim?: number };                    // id, slot (−1 computer), side, look
+export type TankRow = [number, number, number, number, number, number, number, number, number, number]; // id, x, y, hearts, alive, gone, power shell, shield, gripUntil, missile
 export type CrateRow = [number, number, number, number];                    // id, x, y, falling
 export type Msg =
   | { t: typeof TankMsg.Look; from: number; p: TankLook }
   | { t: typeof TankMsg.Mode; from: number; map: MapId; tanks: number; level: Difficulty }
   | { t: typeof TankMsg.Begin; from: number; seed: number; map: PlayableMap; tanks: BeginRow[] }
   | ({ t: typeof TankMsg.Turn; from: number } & TurnInfo)
-  | { t: typeof TankMsg.Pose; from: number; id: number; x: number; angle: number; power: number; fuel: number }
+  | { t: typeof TankMsg.Pose; from: number; id: number; x: number; angle: number; power: number }
   | { t: typeof TankMsg.Fire; from: number; id: number; x: number; angle: number; power: number }
   | { t: typeof TankMsg.Settle; from: number; blasts: [number, number, number][]; tanks: TankRow[]; crates: CrateRow[]; got: [number, Drop][] }
   | { t: typeof TankMsg.Drop; from: number; id: number; x: number }
@@ -47,13 +47,13 @@ const list = <T>(v: unknown, max: number, ok: (x: unknown) => boolean): v is T[]
 const isPlayable = (v: unknown): v is PlayableMap => isMember(MapId, v) && v !== MapId.Random;
 const blastRow = (b: unknown) => Array.isArray(b) && b.length === 3 && inX(b[0]) && inY(b[1]) && num(b[2]) && b[2] > 0 && b[2] <= 200;
 const beginRow = (r: unknown) => Array.isArray(r) && r.length === 4 && isId(r[0]) && (r[1] === -1 || isSlot(r[1])) && isMember(Side, r[2]);
-const tankRow = (r: unknown) => Array.isArray(r) && r.length === 9 && isId(r[0]) && inX(r[1]) && inY(r[2]) && num(r[3]) && r[3] <= 50
-  && bit(r[4]) && bit(r[5]) && bit(r[6]) && bit(r[7]) && Number.isInteger(r[8]) && (r[8] as number) >= NO_GRIP;
+const tankRow = (r: unknown) => Array.isArray(r) && r.length === 10 && isId(r[0]) && inX(r[1]) && inY(r[2]) && num(r[3]) && r[3] <= 50
+  && bit(r[4]) && bit(r[5]) && bit(r[6]) && bit(r[7]) && Number.isInteger(r[8]) && (r[8] as number) >= NO_GRIP && bit(r[9]);
 const crateRow = (r: unknown) => Array.isArray(r) && r.length === 4 && isCrateId(r[0]) && inX(r[1]) && inY(r[2]) && bit(r[3]);
 const gotRow = (r: unknown) => Array.isArray(r) && r.length === 2 && isId(r[0]) && isMember(Drop, r[1]);
 const turnOk = (v: unknown) => {
   const m = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
-  return isId(m.id) && (m.slot === -1 || isSlot(m.slot)) && num(m.left) && m.left >= 0 && m.left <= TURN_MS && num(m.wind) && Math.abs(m.wind) <= 1000
+  return isId(m.id) && (m.slot === -1 || isSlot(m.slot)) && num(m.left) && m.left >= 0 && m.left <= TURN_MS
     && Number.isInteger(m.round) && (m.round as number) > 0 && (m.round as number) < MAX_ROUND && list(m.rest, MAX_TANKS, isId)
     && (m.aim === undefined || bit(m.aim));
 };
@@ -71,7 +71,7 @@ export function parseMessage(raw: unknown): Msg | null {
     case TankMsg.Begin: return Number.isInteger(m.seed) && (m.seed as number) >= 0 && (m.seed as number) < MAX_SEED && isPlayable(m.map)
       && list<BeginRow>(m.tanks, MAX_TANKS, beginRow) ? { ...m, tanks: cleanRows(m.tanks) } as Msg : null;
     case TankMsg.Turn: return turnOk(m) ? raw as Msg : null;
-    case TankMsg.Pose: return isId(m.id) && inX(m.x) && num(m.angle) && num(m.power) && num(m.fuel) ? raw as Msg : null;
+    case TankMsg.Pose: return isId(m.id) && inX(m.x) && num(m.angle) && num(m.power) ? raw as Msg : null;
     case TankMsg.Fire: return isId(m.id) && inX(m.x) && num(m.angle) && num(m.power) ? raw as Msg : null;
     case TankMsg.Settle: return list(m.blasts, BLAST_CHUNK, blastRow) && list(m.tanks, MAX_TANKS, tankRow)
       && list(m.crates, MAX_CRATES_SENT, crateRow) && list(m.got, MAX_TANKS, gotRow) ? raw as Msg : null;
@@ -137,18 +137,18 @@ export function encodeSettle(b: Battle, blasts: [number, number, number][], got:
   const r = (n: number) => Math.round(n * 100) / 100;
   return {
     t: TankMsg.Settle, blasts: blasts.map(([x, y, rad]) => [r(x), r(y), rad]), got,
-    tanks: b.tanks.map(t => [t.id, r(t.x), r(t.y), t.hearts, +t.alive, +t.gone, +t.powerShell, +t.shield, t.gripUntil ?? NO_GRIP]),
+    tanks: b.tanks.map(t => [t.id, r(t.x), r(t.y), t.hearts, +t.alive, +t.gone, +t.powerShell, +t.shield, t.gripUntil ?? NO_GRIP, +t.missile]),
     crates: b.crates.map(c => [c.id, r(c.x), r(c.y), +c.falling]),
   };
 }
 
 /** Copies the runner's state onto this device's battle; crates it hasn't heard of appear (contents hidden). */
 export function applySettle(b: Battle, m: Extract<Msg, { t: typeof TankMsg.Settle }>) {
-  for (const [id, x, y, hearts, alive, gone, power, shield, grip] of m.tanks) {
+  for (const [id, x, y, hearts, alive, gone, power, shield, grip, missile] of m.tanks) {
     const t = b.tanks[id];
     if (!t) continue;
-    Object.assign(t, { x, y, hearts: Math.min(hearts, TANKS[t.type].hearts), alive: !!alive, gone: !!gone, powerShell: !!power, shield: !!shield,
-      gripUntil: grip === NO_GRIP ? null : grip, falling: false, vy: 0, slide: 0 });
+    Object.assign(t, { x, y, hearts: Math.min(hearts, specOf(t.look).hearts), alive: !!alive, gone: !!gone, powerShell: !!power, shield: !!shield,
+      gripUntil: grip === NO_GRIP ? null : grip, missile: !!missile, falling: false, vy: 0, slide: 0 });
   }
   b.crates = m.crates.map(([id, x, y, falling]) => ({ ...(b.crates.find(c => c.id === id) ?? { contents: null }), id, x, y, falling: !!falling }));
   b.nextCrate = Math.max(b.nextCrate, ...b.crates.map(c => c.id + 1));

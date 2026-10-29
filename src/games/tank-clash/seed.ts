@@ -19,7 +19,7 @@ export function seeded(seed: number): Random {
   };
 }
 
-/** Offline, `?seed=<number>` fixes the battlefield, wind, start spots and air drops; online it's ignored. */
+/** Offline, `?seed=<number>` fixes the battlefield, start spots and air drops; online it's ignored. */
 export function gameSetup(url: string, online: boolean, now = Date.now()) {
   const q = new URL(url).searchParams, seed = q.get(SEED_QUERY);
   const fixed = !online && seed !== null && new RegExp(`^\\d{1,${MAX_SEED_DIGITS}}$`).test(seed);

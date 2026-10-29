@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CELL, FUEL, GRID_H, GRID_W, MAX_CRATES, POWER_SCALE, GRAVITY, SETTLE_MIN, TANK_H, TANK_W, TURN_MS, WORLD_H, WORLD_W } from './constants.ts';
+import { CANNON_H, CELL, GRID_H, GRID_W, MAX_CRATES, POWER_SCALE, GRAVITY, SETTLE_MIN, TANK_H, TANK_W, TURN_MS, WORLD_H, WORLD_W } from './constants.ts';
 import { Drop, Grip, MapId, Material, Phase, Side, TankType } from './enums.ts';
 import { seeded } from './seed.ts';
 import {
   activeTank, addCrate, blast, buildOrder, createBattle, DRAW, fire, newTank, NO_INPUT, pickUp, rollDrop, setPose, setTurn,
-  startTurn, step, tankOf, winnerOf, type Battle, type Events, type Input,
+  makeShell, startTurn, step, tankOf, tiltOf, winnerOf, type Battle, type Events, type Input,
 } from './sim.ts';
 import { surfaceAt } from './terrain.ts';
 import { TANKS } from './tanks.ts';
@@ -20,7 +20,7 @@ function battle(tanks: [Side, number, TankType?][], top = TOP): Battle {
   const cells = new Uint8Array(GRID_W * GRID_H);
   cells.fill(Material.Earth, Math.floor(top / CELL) * GRID_W);
   const b: Battle = { terrain: { cells, map: MapId.GreenHills }, tanks: [], crates: [], round: 1, order: [], active: 0, phase: Phase.Aim,
-    turnLeftMs: TURN_MS, wind: 0, shell: null, winner: null, settleT: 0, nextCrate: 0, boom: null };
+    turnLeftMs: TURN_MS, shell: null, winner: null, settleT: 0, nextCrate: 0, boom: null };
   tanks.forEach(([side, x, type], i) => b.tanks.push(newTank(b, i, { side, look: look(type), owner: null }, x)));
   return b;
 }
@@ -41,7 +41,6 @@ test('a new battle: sides in their halves on the ground, the first Left tank to 
     assert.ok(t.y <= surfaceAt(b.terrain, t.x)!.y && !t.falling, 'rests on the ground');
   }
   assert.equal(b.tanks[b.active].side, Side.Left);
-  assert.ok(Math.abs(b.wind) <= 60);
   assert.equal(b.round, 1);
   assert.equal(createBattle(seeded(1), MapId.LakeValley, entries).terrain.map, MapId.LakeValley);
 });
@@ -67,41 +66,45 @@ test('each round every live tank plays once; a crate drops after each round, at 
   assert.equal(b.round, 2); assert.equal(b.active, 0);
   for (let i = 0; i < 10; i++) startTurn(b, r);
   assert.equal(b.crates.length, MAX_CRATES);
-  assert.equal(activeTank(b).fuel, FUEL);
   assert.equal(b.turnLeftMs, TURN_MS);
 });
 
-test('drop chances follow the table, the shield rare', () => {
+test('drop chances follow the table, the shield rarest', () => {
   const r = seeded(5), n: Record<string, number> = {};
   for (let i = 0; i < 10000; i++) { const d = rollDrop(r); n[d] = (n[d] ?? 0) + 1; }
-  assert.ok(Math.abs(n[Drop.Repair] - 3500) < 300 && Math.abs(n[Drop.Shield] - 500) < 150, JSON.stringify(n));
-  assert.equal(rollDrop(() => 0.999999), Drop.Shield);
+  assert.ok(Math.abs(n[Drop.Repair] - 3500) < 300 && Math.abs(n[Drop.Shield] - 500) < 150 && Math.abs(n[Drop.Missile] - 1000) < 200, JSON.stringify(n));
+  assert.equal(rollDrop(() => 0.999999), Drop.Missile);
 });
 
-test('aiming stays within the type’s limits; power 0–100', () => {
+test('aiming stays within the type’s limits; power from 0 to its top power (Heavy 89)', () => {
   const b = battle([[Side.Left, 200, TankType.Heavy], [Side.Right, 1200]]);
   run(b, { ...NO_INPUT, aim: 1, power: 1 }, 3);
   assert.equal(activeTank(b).angle, TANKS[TankType.Heavy].maxAngle);
-  assert.equal(activeTank(b).power, 100);
+  assert.equal(activeTank(b).power, 89);
   run(b, { ...NO_INPUT, aim: -1, power: -1 }, 4);
   assert.equal(activeTank(b).angle, 30);
   assert.equal(activeTank(b).power, 0);
 });
 
-test('driving: uses fuel, stops at the middle line, at other tanks and wrecks, at steep walls, water and gaps', () => {
+test('driving: as far as the turn allows, at the type’s speed; crosses the middle, stops at the screen edge, other tanks and wrecks, steep walls, water and gaps', () => {
   const b = battle([[Side.Left, 700], [Side.Right, 1200]]);
   run(b, { ...NO_INPUT, drive: 1 }, 5);
-  assert.equal(activeTank(b).x, WORLD_W / 2 - TANK_W / 2, 'the middle line');
-  assert.ok(activeTank(b).fuel < FUEL);
+  assert.ok(activeTank(b).x > WORLD_W / 2, 'into the other half');
+  const edge = battle([[Side.Left, 60], [Side.Right, 1200]]);
+  run(edge, { ...NO_INPUT, drive: -1 }, 2);
+  assert.equal(activeTank(edge).x, TANK_W / 2, 'the screen edge');
 
   const c = battle([[Side.Left, 200], [Side.Left, 280], [Side.Right, 1200]]);
   c.tanks[1].alive = false; // a wreck still blocks
   run(c, { ...NO_INPUT, drive: 1 }, 3);
   assert.ok(activeTank(c).x <= 280 - TANK_W + 2);
 
-  const fuel = battle([[Side.Left, 100], [Side.Right, 1200]]);
-  run(fuel, { ...NO_INPUT, drive: 1 }, 10);
-  assert.ok(Math.abs(activeTank(fuel).x - (100 + FUEL)) < 2, 'out of fuel');
+  const speed = (type: TankType) => { const t = battle([[Side.Left, 100, type], [Side.Right, 1500]]); run(t, { ...NO_INPUT, drive: 1 }, 2); return activeTank(t).x - 100; };
+  assert.ok(Math.abs(speed(TankType.Heavy) - TANKS[TankType.Heavy].speed * 2) < 2, 'the Heavy drives at its speed');
+  assert.ok(speed(TankType.Scout) > speed(TankType.Allrounder) && speed(TankType.Allrounder) > speed(TankType.Heavy), 'lighter is faster');
+  const far = battle([[Side.Left, 100, TankType.Scout], [Side.Right, 1500]]);
+  run(far, { ...NO_INPUT, drive: 1 }, 6);
+  assert.ok(activeTank(far).x > 500, 'no limit but the clock');
 
   const wall = battle([[Side.Left, 200], [Side.Right, 1200]]);
   setRows(wall, 260, 300, TOP - 100, TOP, Material.Earth);
@@ -124,7 +127,7 @@ test('driving: uses fuel, stops at the middle line, at other tanks and wrecks, a
   assert.ok(activeTank(hill).y < TOP, 'climbs a gentle slope');
 });
 
-test('snow and ice: a tank slides on after driving and back when firing, by its grip; never while parked', () => {
+test('grip: low grip rolls on after letting go (further on snow and ice) and kicks back on snow and ice; never while parked', () => {
   const slid = (type: TankType, m: Material, gear = false) => {
     const b = battle([[Side.Left, 300, type], [Side.Right, 1200]]);
     setRows(b, 0, WORLD_W / 2, TOP, TOP + 12, m);
@@ -145,7 +148,9 @@ test('snow and ice: a tank slides on after driving and back when firing, by its 
   assert.ok(Math.abs(medium.after - heavy.after / 2) < 2);
   assert.ok(ice.after > heavy.after && ice.after <= TANK_W);
   assert.deepEqual(slid(TankType.Heavy, Material.Snow, true), { after: 0, back: 0 }, 'grip gear');
-  assert.deepEqual(slid(TankType.Heavy, Material.Earth), { after: 0, back: 0 }, 'no slide on earth');
+  const earth = slid(TankType.Heavy, Material.Earth);
+  assert.ok(earth.after > 0 && earth.after < heavy.after && earth.back === 0, 'on earth: rolls on a little, no kick-back');
+  assert.deepEqual(slid(TankType.Scout, Material.Earth), { after: 0, back: 0 }, 'high grip stops dead');
 
   const parked = battle([[Side.Left, 300, TankType.Heavy], [Side.Right, 1200]]);
   for (let x = 0; x < 800; x += CELL) setRows(parked, x, x + CELL, TOP - x * 0.2, TOP, Material.Snow);
@@ -155,7 +160,7 @@ test('snow and ice: a tank slides on after driving and back when firing, by its 
   assert.equal(parked.tanks[0].x, x0);
 });
 
-test('a shot flies in an arc, leaves a trail and blows a hole; wind pushes it', () => {
+test('a shot flies in an arc, leaves a trail and blows a hole', () => {
   const b = battle([[Side.Left, 200], [Side.Right, 1500]]);
   Object.assign(activeTank(b), { angle: 45, power: 50 });
   fire(b);
@@ -168,11 +173,6 @@ test('a shot flies in an arc, leaves a trail and blows a hole; wind pushes it', 
   assert.ok(Math.abs(ev.blasts[0][0] - (200 + range)) < 60, `${ev.blasts[0][0]} vs ${200 + range}`);
   assert.ok(surfaceAt(b.terrain, ev.blasts[0][0])!.y > TOP, 'a hole');
 
-  const windy = battle([[Side.Left, 200], [Side.Right, 1500]]);
-  windy.wind = 60;
-  Object.assign(activeTank(windy), { angle: 45, power: 50 });
-  fire(windy);
-  assert.ok(untilSettled(windy).blasts[0][0] > ev.blasts[0][0] + 50);
 });
 
 test('shells: off the side or into water do nothing; above the top they keep flying', () => {
@@ -228,8 +228,18 @@ test('a power shell does 1.5× damage, halves rounding up (Heavy 1.5 → 2.3), t
   fire(b);
   assert.equal(b.shell!.damage, 23);
   assert.equal(activeTank(b).powerShell, false);
-  setTurn(b, 0, 0, TURN_MS, 1); fire(b);
+  setTurn(b, 0, TURN_MS, 1); fire(b);
   assert.equal(b.shell!.damage, 15);
+});
+
+test('a missile doubles the damage and flies 1.5× as fast, then is used up; with a power shell, 3×', () => {
+  const b = battle([[Side.Left, 200, TankType.Heavy], [Side.Right, 1200]]), t = activeTank(b);
+  fire(b); const plain = b.shell!;
+  setTurn(b, 0, TURN_MS, 1); t.missile = true; fire(b);
+  assert.deepEqual([b.shell!.damage, b.shell!.missile, t.missile], [30, true, false]);
+  assert.equal(Math.round(b.shell!.vx / plain.vx * 10) / 10, 1.5);
+  setTurn(b, 0, TURN_MS, 2); t.missile = true; t.powerShell = true; fire(b);
+  assert.equal(b.shell!.damage, 46);
 });
 
 test('shells explode on wrecks; wrecks fall when the ground goes and leave the screen if nothing is below', () => {
@@ -330,11 +340,12 @@ test('what crates give: repair up to full, power shell, grip gear for the next r
   give(Drop.Repair); assert.equal(t.hearts, 40, 'wasted at full');
   give(Drop.Power); give(Drop.Power); assert.equal(t.powerShell, true);
   give(Drop.Shield); assert.equal(t.shield, true);
+  give(Drop.Missile); give(Drop.Missile); assert.equal(t.missile, true);
   give(Drop.GripGear); assert.equal(t.gripUntil, b.round + 1);
-  give(null); assert.equal(ev.got.length, 5, 'unknown contents (online guest): nothing applied here');
+  give(null); assert.equal(ev.got.length, 7, 'unknown contents (online guest): nothing applied here');
   assert.equal(b.crates.length, 0);
-  setTurn(b, 0, 0, TURN_MS, b.round + 1); assert.equal(t.gripUntil, b.round, 'lasts through the next round');
-  setTurn(b, 0, 0, TURN_MS, b.round + 1); assert.equal(t.gripUntil, null);
+  setTurn(b, 0, TURN_MS, b.round + 1); assert.equal(t.gripUntil, b.round, 'lasts through the next round');
+  setTurn(b, 0, TURN_MS, b.round + 1); assert.equal(t.gripUntil, null);
   assert.equal(Grip.High, 'High');
 });
 
@@ -362,14 +373,30 @@ test('timeouts pass the turn with no shot; the battle ends when a side is empty 
   assert.ok(run(gone, NO_INPUT, 1).timeout, 'a destroyed active tank passes at once');
 });
 
-test('setPose: the active tank as its own device drove it, held in its half, limits and fuel', () => {
+test('on a slope a tank leans, and its shell leaves from the leaning cannon', () => {
+  const b = battle([[Side.Left, 400], [Side.Right, 1200]]), t = b.tanks[0];
+  assert.equal(tiltOf(b, t), 0, 'flat ground');
+  for (let x = 400; x < 440; x += CELL) // ground rising under the tank's right end
+    for (let y = TOP - (x - 400) / 2; y < TOP; y += CELL) b.terrain.cells[Math.floor(y / CELL) * GRID_W + Math.floor(x / CELL)] = Material.Earth;
+  const tilt = tiltOf(b, t);
+  assert.ok(tilt < -0.2, `leans back: ${tilt}`);
+  t.falling = true; assert.equal(tiltOf(b, t), 0, 'not while falling'); t.falling = false;
+  const onWreck = battle([[Side.Left, 400], [Side.Right, 1200], [Side.Left, 400 + TANK_W * 0.6]]);
+  onWreck.tanks[2].alive = false; onWreck.tanks[0].y = TOP - TANK_H; // half on flat ground, half on a wreck's roof
+  assert.ok(tiltOf(onWreck, onWreck.tanks[0]) <= 0, 'a wreck under one end holds it up');
+  const flat = makeShell(t, 45, 50, 10), leaning = makeShell(t, 45, 50, 10, tilt);
+  assert.ok(Math.abs(leaning.x - flat.x - CANNON_H * Math.sin(tilt)) < 1e-9 && leaning.y > flat.y, 'the pivot moves with the body');
+  fire(b); assert.equal(b.shell!.x, leaning.x, 'firing uses the tilt');
+});
+
+test('setPose: the active tank as its own device drove it, held on the field and its limits', () => {
   const b = battle([[Side.Left, 200, TankType.Heavy], [Side.Right, 1200]]);
-  setPose(b, 0, 2000, 10, 150, 999);
+  setPose(b, 0, 2000, 10, 150);
   const t = tankOf(b, 0);
-  assert.deepEqual([t.x, t.angle, t.power, t.fuel], [WORLD_W / 2 - TANK_W / 2, 30, 100, FUEL]);
-  setPose(b, 0, 300, 50, 40, 20);
-  assert.deepEqual([t.x, t.y, t.angle, t.power, t.fuel], [300, TOP, 50, 40, 20]);
-  t.alive = false; setPose(b, 0, 100, 50, 40, 20);
+  assert.deepEqual([t.x, t.angle, t.power], [WORLD_W - TANK_W / 2, 30, 89], "power held at its top power");
+  setPose(b, 0, 300, 50, 40);
+  assert.deepEqual([t.x, t.y, t.angle, t.power], [300, TOP, 50, 40]);
+  t.alive = false; setPose(b, 0, 100, 50, 40);
   assert.equal(t.x, 300, 'a destroyed tank stays put');
 });
 
@@ -380,10 +407,18 @@ test('a device told the turns (with the rest of the round) can run the battle la
   const r = seeded(4);
   for (let i = 0; i < 6; i++) { // round 1 and half of round 2
     startTurn(runner, r);
-    setTurn(guest, runner.active, runner.wind, TURN_MS, runner.round, runner.order);
+    setTurn(guest, runner.active, TURN_MS, runner.round, runner.order);
     assert.deepEqual(guest.order, runner.order, `turn ${i}`);
   }
   startTurn(guest, r); // the guest takes over mid-round: the round's last two tanks still play
   assert.equal(guest.round, 2);
   assert.equal(guest.active, runner.order[0]);
+});
+
+test('a tank stands on the middle of its tracks: with only a corner on an edge, it falls', () => {
+  const b = battle([[Side.Left, 300], [Side.Right, 1200]]);
+  setRows(b, 300 - TANK_W / 2 + 6, 700, TOP, WORLD_H, Material.Air); // only the left corner is still over ground
+  b.phase = Phase.Settle;
+  untilSettled(b);
+  assert.deepEqual([b.tanks[0].alive, b.tanks[0].gone], [false, true], 'fell off the screen');
 });

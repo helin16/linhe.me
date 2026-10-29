@@ -1,35 +1,35 @@
-// The battle (research R4, R5, R7; FR-002–FR-011, FR-020–FR-021, FR-025): two sides taking turns, driving within
-// their half, shells under gravity and wind, blasts that carve the ground and take hearts (tenths), falling tanks,
+// The battle (research R4, R5, R7; FR-002–FR-011, FR-020–FR-021, FR-025): two sides taking turns, driving anywhere
+// on the field, shells under gravity, blasts that carve the ground and take hearts (tenths), falling tanks,
 // wrecks, snow sliding and air drops. Pure: the random source and every input come from outside.
 import {
-  BLAST_R, CRATE_FALL_MS, CRATE_SIZE, DRIVE_SPEED, DROP_CHANCES, FALL_OUT, FUEL, GRAVITY, GRIP_SLIDE, ICE_SLIDE_FACTOR,
-  MAX_CLIMB, MAX_CRATES, MUZZLE, POWER_SCALE, POWER_SHELL_FACTOR, POWER_SPEED, ANGLE_SPEED, REPAIR, SETTLE_MIN, SLIDE,
-  SLIDE_SPEED, START_ANGLE, START_POWER, TANK_H, TANK_W, TRAIL_MAX, TURN_MS, WIND_MAX, WORLD_H, WORLD_W,
+  BLAST_R, CRATE_FALL_MS, CRATE_SIZE, DROP_CHANCES, FALL_OUT, GRAVITY, GRIP_SLIDE, GROUND_SLIDE_FACTOR, ICE_SLIDE_FACTOR,
+  CANNON_H, MAX_CLIMB, MAX_CRATES, MISSILE_DAMAGE_FACTOR, MISSILE_SPEED_FACTOR, MUZZLE, POWER_SCALE, POWER_SHELL_FACTOR, POWER_SPEED, ANGLE_SPEED, REPAIR, SETTLE_MIN, SLIDE,
+  SLIDE_SPEED, START_ANGLE, START_POWER, TANK_H, TANK_W, TRAIL_MAX, TURN_MS, WORLD_H, WORLD_W,
 } from './constants.ts';
 import { Drop, Grip, MapId, Material, Phase, Side, type TankType } from './enums.ts';
 import type { Random } from './seed.ts';
 import type { TankLook } from './settings.ts';
-import { clampAngle, TANKS } from './tanks.ts';
+import { clampAngle, clampPower, specOf } from './tanks.ts';
 import { carve, cellAt, generate, groundBelow, isSolid, PLAYABLE_MAPS, type Ground, type PlayableMap, type Terrain } from './terrain.ts';
 
 /** Who drives a tank: player 1 or 2 on this device, an online slot, or the computer (null). */
 export type Owner = { player: number } | { slot: number } | null;
 export type Tank = {
   id: number; side: Side; type: TankType; look: TankLook; owner: Owner;
-  x: number; y: number; angle: number; power: number; fuel: number; hearts: number;
+  x: number; y: number; angle: number; power: number; hearts: number;
   alive: boolean; gone: boolean;   // not alive and not gone: a wreck (FR-025)
   doomed: boolean;                 // destroyed by a fall: leaves no wreck
   vy: number; falling: boolean; on: Material;
-  powerShell: boolean; shield: boolean; gripUntil: number | null;
+  powerShell: boolean; shield: boolean; gripUntil: number | null; missile: boolean;
   slide: number; driving: number; // the way it is driving (−1, 1), or 0
 };
 export type Crate = { id: number; x: number; y: number; falling: boolean; contents: Drop | null };
-export type Shell = { x: number; y: number; vx: number; vy: number; trail: [number, number][]; damage: number; from: number; age: number };
+export type Shell = { x: number; y: number; vx: number; vy: number; trail: [number, number][]; damage: number; from: number; age: number; missile: boolean };
 export const DRAW = 'draw';
 export type Winner = Side | typeof DRAW | null;
 export type Battle = {
   terrain: Terrain; tanks: Tank[]; crates: Crate[]; round: number; order: number[]; active: number; phase: Phase;
-  turnLeftMs: number; wind: number; shell: Shell | null; winner: Winner; settleT: number; nextCrate: number;
+  turnLeftMs: number; shell: Shell | null; winner: Winner; settleT: number; nextCrate: number;
   boom: { x: number; y: number; r: number; t: number } | null;
 };
 export type Entry = { side: Side; look: TankLook; owner: Owner };
@@ -41,9 +41,13 @@ export const NO_INPUT: Input = { drive: 0, aim: 0, power: 0, fire: false };
 const SELF_SAFE = 0.15;   // a new shell ignores the tank that fired it this long
 const EDGE = 2;           // footprint columns sit this far inside the tank's ends
 const CRATE_SPEED = WORLD_H / (CRATE_FALL_MS / 1000);
+const MAX_TILT = 0.87;   // radians (50°): steeper ground than a tank can climb isn't followed further
 const BIG_DROP = 8;       // driving down more than this at once is a fall, not a slope
 const RESTING = 0.5;      // support this far below is still "resting"
-const half = (side: Side) => side === Side.Left ? [TANK_W / 2, WORLD_W / 2 - TANK_W / 2] : [WORLD_W / 2 + TANK_W / 2, WORLD_W - TANK_W / 2];
+const FIELD = [TANK_W / 2, WORLD_W - TANK_W / 2]; // a tank's centre stays this far inside the screen's edges
+// a tank stands on what is under the middle half of its tracks: with only a corner on an edge it falls (and on a
+// slope it is drawn tilted onto the ground)
+export const BASE_W = TANK_W / 2;
 export const facing = (side: Side) => side === Side.Left ? 1 : -1;
 const noEvents = (): Events => ({ fired: false, blasts: [], landed: [], got: [], destroyed: [], settled: false, timeout: false });
 
@@ -72,7 +76,7 @@ export function createBattle(random: Random, map: MapId, entries: Entry[]): Batt
   const lefts = entries.filter(e => e.side === Side.Left), rights = entries.filter(e => e.side === Side.Right);
   const { terrain, spots } = generate(random, resolved, lefts.length, rights.length);
   const b: Battle = { terrain, tanks: [], crates: [], round: 0, order: [], active: 0, phase: Phase.Aim, turnLeftMs: TURN_MS,
-    wind: 0, shell: null, winner: null, settleT: 0, nextCrate: 0, boom: null };
+    shell: null, winner: null, settleT: 0, nextCrate: 0, boom: null };
   [...lefts, ...rights].forEach((e, i) => b.tanks.push(newTank(b, i, e, spots[i])));
   startTurn(b, random);
   return b;
@@ -80,10 +84,10 @@ export function createBattle(random: Random, map: MapId, entries: Entry[]): Batt
 
 /** A tank at x resting on the ground (new battles here, and online battles as the runner sent them). */
 export function newTank(b: Battle, id: number, e: Entry, x: number): Tank {
-  const g = support(b, x, TANK_W, 0, id) ?? { y: WORLD_H, m: Material.Earth };
-  return { id, side: e.side, type: e.look.type, look: e.look, owner: e.owner, x, y: g.y, angle: clampAngle(e.look.type, START_ANGLE),
-    power: START_POWER, fuel: FUEL, hearts: TANKS[e.look.type].hearts, alive: true, gone: false, doomed: false, vy: 0,
-    falling: false, on: g.m, powerShell: false, shield: false, gripUntil: null, slide: 0, driving: 0 };
+  const g = support(b, x, BASE_W, 0, id) ?? { y: WORLD_H, m: Material.Earth };
+  return { id, side: e.side, type: e.look.type, look: e.look, owner: e.owner, x, y: g.y, angle: clampAngle(e.look, START_ANGLE),
+    power: START_POWER, hearts: specOf(e.look).hearts, alive: true, gone: false, doomed: false, vy: 0,
+    falling: false, on: g.m, powerShell: false, shield: false, gripUntil: null, missile: false, slide: 0, driving: 0 };
 }
 
 /** This round's turns (FR-006): Left, Right alternately while both sides have tanks to play, then the rest. */
@@ -104,18 +108,17 @@ export function startTurn(b: Battle, random: Random): Crate | null {
     b.order = buildOrder(b);
     b.round++;
   }
-  setTurn(b, b.order.shift()!, Math.round((random() * 2 - 1) * WIND_MAX), TURN_MS, b.round);
+  setTurn(b, b.order.shift()!, TURN_MS, b.round);
   return crate;
 }
 
 /** A turn as told (online guests, and the end of startTurn). `rest`: the round's turns still to come, as the runner
  *  has them, so any device can run the battle from here on. */
-export function setTurn(b: Battle, id: number, wind: number, leftMs: number, round: number, rest?: number[]) {
+export function setTurn(b: Battle, id: number, leftMs: number, round: number, rest?: number[]) {
   if (rest) b.order = [...rest];
-  b.round = round; b.active = id; b.wind = wind; b.turnLeftMs = leftMs; b.phase = Phase.Aim; b.shell = null;
+  b.round = round; b.active = id; b.turnLeftMs = leftMs; b.phase = Phase.Aim; b.shell = null;
   b.order = b.order.filter(o => o !== id);
   for (const t of b.tanks) { t.driving = 0; if (t.gripUntil !== null && t.gripUntil < round) t.gripUntil = null; }
-  b.tanks[id].fuel = FUEL;
 }
 
 export function rollDrop(random: Random): Drop {
@@ -131,42 +134,59 @@ export function addCrate(b: Battle, id: number, x: number, contents: Drop | null
   return c;
 }
 
-const grip = (b: Battle, t: Tank) => t.gripUntil !== null && t.gripUntil >= b.round ? Grip.High : TANKS[t.type].grip;
-/** Starts a slide on snow or ice (FR-011): after driving stops (dir = the way it went) or when firing (dir = back). */
-function startSlide(b: Battle, t: Tank, dir: number) {
-  if (t.on !== Material.Snow && t.on !== Material.Ice) return;
-  const d = Math.min(TANK_W, SLIDE * GRIP_SLIDE[grip(b, t)] * (t.on === Material.Ice ? ICE_SLIDE_FACTOR : 1));
+const grip = (b: Battle, t: Tank) => t.gripUntil !== null && t.gripUntil >= b.round ? Grip.High : specOf(t.look).grip;
+/** Starts a slide by the tank's grip (FR-011): after driving stops (dir = the way it went), on any ground and further
+ *  on snow or ice; or when firing (dir = back, `kick`), on snow or ice only. */
+function startSlide(b: Battle, t: Tank, dir: number, kick = false) {
+  const icy = t.on === Material.Snow || t.on === Material.Ice;
+  if (kick && !icy) return;
+  const surface = t.on === Material.Ice ? ICE_SLIDE_FACTOR : icy ? 1 : GROUND_SLIDE_FACTOR;
+  const d = Math.min(TANK_W, SLIDE * GRIP_SLIDE[grip(b, t)] * surface);
   t.slide = dir * d;
 }
 
-/** Moves a tank sideways by dx along the ground, if it may go there (half, other tanks, slopes, water, gaps). */
+/** Moves a tank sideways by dx along the ground, if it may go there (screen edges, other tanks, slopes, water, gaps). */
 function move(b: Battle, t: Tank, dx: number) {
-  const dir = Math.sign(dx), [lo, hi] = half(t.side), nx = Math.min(hi, Math.max(lo, t.x + dx));
+  const dir = Math.sign(dx), [lo, hi] = FIELD, nx = Math.min(hi, Math.max(lo, t.x + dx));
   if (nx === t.x) return false;
   if (solidOthers(b, t.id).some(o => Math.abs(o.x - nx) < TANK_W && Math.abs(o.y - t.y) < TANK_H)) return false;
   const climb = TANK_W / 2 * MAX_CLIMB, front = groundBelow(b.terrain, nx + dir * TANK_W / 2, t.y - climb);
   if (!front || front.m === Material.Water || t.y - front.y >= climb) return false; // a gap, water or too steep
-  const g = support(b, nx, TANK_W, t.y - climb, t.id);
+  const g = support(b, nx, BASE_W, t.y - climb, t.id);
   if (!g || g.m === Material.Water) return false;
   t.x = nx;
   if (g.y - t.y > BIG_DROP) t.falling = true; else { t.y = g.y; t.on = g.m; }
   return true;
 }
 
-/** Fires the active tank's shell (FR-004); a power shell does 1.5× damage, halves rounding up (research R4). */
+/** Fires the active tank's shell (FR-004); a power shell does 1.5× damage, halves rounding up (research R4); a missile
+ *  doubles it (both together: 3×). */
 export function fire(b: Battle) {
-  const t = activeTank(b), f = facing(t.side), base = TANKS[t.type].damage;
-  b.shell = makeShell(t, t.angle, t.power, t.powerShell ? Math.round(base * POWER_SHELL_FACTOR) : base);
-  t.powerShell = false; t.driving = 0;
-  startSlide(b, t, -f);
+  const t = activeTank(b), f = facing(t.side), base = specOf(t.look).damage;
+  const damage = (t.powerShell ? Math.round(base * POWER_SHELL_FACTOR) : base) * (t.missile ? MISSILE_DAMAGE_FACTOR : 1);
+  b.shell = makeShell(t, t.angle, t.power, damage, tiltOf(b, t));
+  t.powerShell = false; t.missile = false; t.driving = 0;
+  startSlide(b, t, -f, true);
   b.phase = Phase.Flight;
 }
 
-/** A shell leaving t's cannon at an angle and power. */
-export function makeShell(t: Tank, angle: number, power: number, damage: number): Shell {
-  const f = facing(t.side), rad = angle * Math.PI / 180, speed = power * POWER_SCALE;
-  return { x: t.x + f * Math.cos(rad) * MUZZLE, y: t.y - TANK_H * 0.7 - Math.sin(rad) * MUZZLE,
-    vx: f * Math.cos(rad) * speed, vy: -Math.sin(rad) * speed, trail: [], from: t.id, age: 0, damage };
+/** How far a resting tank leans to sit on the ground under its two ends (0 while falling or on flat ground). */
+export function tiltOf(b: Battle, t: Tank) {
+  if (t.falling) return 0;
+  const end = (dx: number) => { // the ground, or the top of a tank or wreck, under one end
+    const x = t.x + dx, under = solidOthers(b, t.id).filter(o => Math.abs(o.x - x) < TANK_W / 2 && o.y - TANK_H >= t.y - TANK_W / 2).map(o => o.y - TANK_H);
+    return Math.min(groundBelow(b.terrain, x, t.y - TANK_W / 2)?.y ?? t.y + TANK_H, ...under);
+  };
+  const left = Math.min(end(-TANK_W / 2 + 4), t.y + TANK_H), right = Math.min(end(TANK_W / 2 - 4), t.y + TANK_H);
+  return Math.max(-MAX_TILT, Math.min(MAX_TILT, Math.atan2(right - left, TANK_W - 8)));
+}
+
+/** A shell leaving t's cannon at an angle and power (a missile, if t holds one, flies faster). The cannon's pivot
+ *  leans with the body (`tilt`, as drawn); its angle stays measured from flat ground. */
+export function makeShell(t: Tank, angle: number, power: number, damage: number, tilt = 0): Shell {
+  const f = facing(t.side), rad = angle * Math.PI / 180, speed = power * POWER_SCALE * (t.missile ? MISSILE_SPEED_FACTOR : 1);
+  return { x: t.x + CANNON_H * Math.sin(tilt) + f * Math.cos(rad) * MUZZLE, y: t.y - CANNON_H * Math.cos(tilt) - Math.sin(rad) * MUZZLE,
+    vx: f * Math.cos(rad) * speed, vy: -Math.sin(rad) * speed, trail: [], from: t.id, age: 0, damage, missile: t.missile };
 }
 
 const inBox = (t: Tank, x: number, y: number, pad = 0) =>
@@ -198,7 +218,7 @@ export function flyStep(b: Battle, s: Shell, dt: number) {
   s.age += dt;
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(s.vx), Math.abs(s.vy)) * dt / 2)), h = dt / n;
   for (let i = 0; i < n; i++) {
-    s.vx += b.wind * h; s.vy += GRAVITY * h; s.x += s.vx * h; s.y += s.vy * h;
+    s.vy += GRAVITY * h; s.x += s.vx * h; s.y += s.vy * h;
     if (s.x < 0 || s.x > WORLD_W || s.y > WORLD_H) return Flying.Lost;
     if (s.y < 0) continue; // above the screen: still flying
     const m = cellAt(b.terrain, s.x, s.y);
@@ -227,7 +247,7 @@ function stepFalls(b: Battle, dt: number, ev: Events) {
   let moving = false;
   for (const t of b.tanks) {
     if (t.gone) continue;
-    const g = support(b, t.x, TANK_W, t.y - RESTING, t.id);
+    const g = support(b, t.x, BASE_W, t.y - RESTING, t.id);
     if (!t.falling) {
       if (g && g.y <= t.y + RESTING) continue;           // still resting
       if (t.on === Material.Wood) { destroy(t, ev); t.doomed = true; } // the wood under it went: no wreck
@@ -261,10 +281,11 @@ function stepSlides(b: Battle, dt: number) {
 export function pickUp(b: Battle, t: Tank, c: Crate, ev: Events) {
   b.crates = b.crates.filter(x => x !== c);
   if (!c.contents) return;
-  if (c.contents === Drop.Repair) t.hearts = Math.min(TANKS[t.type].hearts, t.hearts + REPAIR);
+  if (c.contents === Drop.Repair) t.hearts = Math.min(specOf(t.look).hearts, t.hearts + REPAIR);
   if (c.contents === Drop.Power) t.powerShell = true;
   if (c.contents === Drop.GripGear) t.gripUntil = b.round + 1;
   if (c.contents === Drop.Shield) t.shield = true;
+  if (c.contents === Drop.Missile) t.missile = true;
   ev.got.push([t.id, c.contents]);
 }
 
@@ -299,11 +320,11 @@ export function step(b: Battle, input: Input, dt: number): Events {
   if (b.phase === Phase.Aim) {
     b.turnLeftMs -= dt * 1000;
     if (t.alive && !t.falling) {
-      t.angle = clampAngle(t.type, t.angle + input.aim * ANGLE_SPEED * dt);
-      t.power = Math.min(100, Math.max(0, t.power + input.power * POWER_SPEED * dt));
-      const dx = Math.min(t.fuel, DRIVE_SPEED * dt);
+      t.angle = clampAngle(t.look, t.angle + input.aim * ANGLE_SPEED * dt);
+      t.power = clampPower(t.look, t.power + input.power * POWER_SPEED * dt);
+      const dx = specOf(t.look).speed * dt; // as far as the turn's time allows: lighter tanks are faster
       const dir = Math.sign(input.drive);
-      if (dir && dx > 0 && !t.slide && move(b, t, dir * dx)) { t.fuel -= dx; t.driving = dir; }
+      if (dir && !t.slide && move(b, t, dir * dx)) t.driving = dir;
       else if (t.driving) { startSlide(b, t, t.driving); t.driving = 0; }
       if (input.fire) { fire(b); ev.fired = true; }
     }
@@ -323,12 +344,12 @@ export function step(b: Battle, input: Input, dt: number): Events {
 }
 
 
-/** Sets the active tank's pose as its own device drove it (online), held inside its half and its type's limits. */
-export function setPose(b: Battle, id: number, x: number, angle: number, power: number, fuel: number) {
-  const t = b.tanks[id], [lo, hi] = half(t.side);
+/** Sets the active tank's pose as its own device drove it (online), held on the field and inside its build's limits. */
+export function setPose(b: Battle, id: number, x: number, angle: number, power: number) {
+  const t = b.tanks[id], [lo, hi] = FIELD;
   if (!t.alive) return;
-  t.x = Math.min(hi, Math.max(lo, x)); t.angle = clampAngle(t.type, angle);
-  t.power = Math.min(100, Math.max(0, power)); t.fuel = Math.min(t.fuel, Math.max(0, fuel));
-  const g = support(b, t.x, TANK_W, t.y - TANK_W, t.id);
+  t.x = Math.min(hi, Math.max(lo, x)); t.angle = clampAngle(t.look, angle);
+  t.power = clampPower(t.look, power);
+  const g = support(b, t.x, BASE_W, t.y - TANK_W, t.id);
   if (g && g.m !== Material.Water) { t.y = g.y; t.on = g.m; }
 }

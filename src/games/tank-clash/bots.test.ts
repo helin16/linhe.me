@@ -11,7 +11,7 @@ function battle(tanks: [Side, number][]): Battle {
   const cells = new Uint8Array(GRID_W * GRID_H);
   cells.fill(Material.Earth, Math.floor(TOP / CELL) * GRID_W);
   const b: Battle = { terrain: { cells, map: MapId.GreenHills }, tanks: [], crates: [], round: 1, order: [], active: 0, phase: Phase.Aim,
-    turnLeftMs: TURN_MS, wind: 0, shell: null, winner: null, settleT: 0, nextCrate: 0, boom: null };
+    turnLeftMs: TURN_MS, shell: null, winner: null, settleT: 0, nextCrate: 0, boom: null };
   tanks.forEach(([side, x], i) => b.tanks.push(newTank(b, i, { side, look: { name: 'C', color: '#123456', type: TankType.Allrounder }, owner: null }, x)));
   return b;
 }
@@ -30,6 +30,25 @@ test('targets the nearest live enemy', () => {
   assert.equal(targetOf(b, b.tanks[0]).id, 2);
   b.tanks[2].alive = false;
   assert.equal(targetOf(b, b.tanks[0]).id, 1);
+});
+
+test('targets the nearest enemy in front, where the cannon can point; any enemy if none is', () => {
+  const b = battle([[Side.Left, 800], [Side.Right, 700], [Side.Right, 1300]]);
+  assert.equal(targetOf(b, b.tanks[0]).id, 2, 'the closer one is behind it');
+  b.tanks[2].alive = false;
+  assert.equal(targetOf(b, b.tanks[0]).id, 1, 'only one left, behind');
+});
+
+test('a crate with a tank or wreck in the way is out of reach', () => {
+  const b = battle([[Side.Left, 200], [Side.Right, 1400], [Side.Right, 262]]);
+  landedCrate(b, 310);
+  assert.equal(crateInReach(b, b.tanks[0]), null);
+  b.tanks[2].alive = false;
+  assert.equal(crateInReach(b, b.tanks[0]), null, 'a wreck blocks too');
+  b.tanks[2].gone = true;
+  assert.equal(crateInReach(b, b.tanks[0]), 310);
+  const past = battle([[Side.Left, 200], [Side.Right, 1400], [Side.Right, 318]]); landedCrate(past, 310);
+  assert.equal(crateInReach(past, past.tanks[0]), null, 'a tank just past the crate stops it short');
 });
 
 test('Hard aims close to the target; Easy misses by more on average; always inside the limits', () => {
@@ -51,7 +70,7 @@ test('never picks a shot that lands on a teammate when another will do', () => {
   assert.ok(Math.abs(hit.x - 700) > 60);
 });
 
-test('crates in reach: landed, in its own half, close enough', () => {
+test('crates in reach: landed and close enough, on either half', () => {
   const b = battle([[Side.Left, 200], [Side.Right, 1400]]);
   assert.equal(crateInReach(b, b.tanks[0]), null);
   landedCrate(b, 1000);
@@ -59,7 +78,9 @@ test('crates in reach: landed, in its own half, close enough', () => {
   assert.equal(crateInReach(b, b.tanks[0]), null);
   landedCrate(b, 302); landedCrate(b, 290);
   assert.equal(crateInReach(b, b.tanks[0]), 290, "the nearest");
-  b.tanks[0].fuel = 10;
+  const far = battle([[Side.Left, 760], [Side.Right, 1400]]); landedCrate(far, 840);
+  assert.equal(crateInReach(far, far.tanks[0]), 840, 'across the middle too');
+  b.tanks[0].look = { ...b.tanks[0].look, type: TankType.Heavy }; b.tanks[0].x = 180; // slower and further: 1.5 s of driving no longer reaches it
   assert.equal(crateInReach(b, b.tanks[0]), null);
 });
 
