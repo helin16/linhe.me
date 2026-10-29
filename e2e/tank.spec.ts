@@ -357,8 +357,10 @@ test.describe('US6: play online', () => {
     await expect(back.locator('#panel .tank')).toHaveCount(2, { timeout: 10_000 });
     await expect(back.locator('#panel .tank.you .name')).toHaveText('Bea');
     // from her tank's next turn it's hers again: no "(computer)" on either screen
+    // WebKit draws only the front window: bring each page forward before fast-forwarding or reading it
+    await a.page.bringToFront();
     await a.page.clock.runFor(31_000);
-    for (const p of [a.page, back]) await expect(p.locator('#whoseTurn')).toHaveText("Bea's turn", { timeout: 40_000 });
+    for (const p of [a.page, back]) { await p.bringToFront(); await expect(p.locator('#whoseTurn')).toHaveText("Bea's turn", { timeout: 40_000 }); }
     expect(a.errors.concat(backErrors)).toEqual([]);
     await a.close(); await b.close(); await c.close();
   });
@@ -382,8 +384,9 @@ test.describe('US6: play online', () => {
     await back.getByRole('button', { name: 'Rejoin battle' }).click();
     await expect(back.locator('#panel .tank')).toHaveCount(2, { timeout: 10_000 });
     await expect(back.locator('#panel .tank.you .name')).toHaveText('Ann');
+    await b.page.bringToFront(); // WebKit draws only the front window
     await b.page.clock.runFor(31_000); // Bea runs the battle now: time turns out until Ann's comes round
-    for (const p of [b.page, back]) await expect(p.locator('#whoseTurn')).toHaveText("Ann's turn", { timeout: 40_000 });
+    for (const p of [b.page, back]) { await p.bringToFront(); await expect(p.locator('#whoseTurn')).toHaveText("Ann's turn", { timeout: 40_000 }); }
     expect(b.errors.concat(backErrors)).toEqual([]);
     await a.close(); await b.close();
   });
