@@ -7,8 +7,8 @@ export default function Home() {
   return (
     <Layout title="Lin He" current={Route.Home}>
       <div className="hero">
-        <h1>Lin He</h1>
-        <p>Welcome to Lin's show ground: a few small games you can play right in your browser.</p>
+        <h1>Show Ground</h1>
+        <p>Welcome! A few small games you can play right in your browser.</p>
       </div>
       <section id="games">
         <h2>Games</h2>

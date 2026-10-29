@@ -66,6 +66,11 @@ nothing about players is kept or logged once a room empties. Rooms have a size (
 `/relay/` unless `VITE_RELAY_URL` says otherwise; a relay on another host also needs the site's
 Content-Security-Policy `connect-src` to allow it.
 
+Every `hello` carries a private rejoin key for that player's slot. If a player drops while the room is
+locked (a game is on), the relay keeps their slot for that key until the room reopens, and
+`/relay/<game>/<code>?key=<key>` takes them back into it (once per key; specs/007-tank-artillery/contracts/relay-rejoin.md).
+Tank Clash uses it; the other games ignore it.
+
 ## Snake Duel
 
 An arena snake game (`src/games/snake-duel/`): steer with the mouse (hold to boost), ←/→ or A/D (↑/W/Space to
@@ -76,6 +81,20 @@ Tumble, rooms of 2 to 8, with the host picking the match and the computer snakes
 every arena to 20 (Easy, Normal or Hard), and the garage customises each snake (name, colours, pattern, eyes).
 Offline, `?seed=<number>` replays the same arena and `?bots=0` parks the computer snakes (the browser tests use both).
 Online, one device runs the arena (first the host) and hands it on if its tab is hidden or it leaves.
+
+## Tank Clash
+
+A turn-based tank artillery game (`src/games/tank-clash/`), seen from the side. Two sides, Left and Right, of 2 to
+10 tanks (computer tanks fill the places players don't take); tanks take turns, one shot each, 30 seconds a turn, and
+only drive within their own half. Keys: ←/→ drive, ↑/↓ aim (1° a press), Q/E power, Space fire; or the on-screen
+buttons, power slider and FIRE. Four tank types trade cannon angle, damage, hearts and grip on snow; the garage
+picks one with a name and colour. Maps (Green Hills, Timber Gap, Lake Valley, Frost Ridge or Random) are generated
+afresh each battle; all ground can be blown away, a tank whose wood or ground is gone falls (off the screen if
+nothing is below), destroyed tanks leave steel wrecks, and a crate drops after every round (repair kit, power shell,
+grip gear, or a rare shield). Online uses the shared lobby, rooms of 2 to 10: players get a random side and can
+switch while it has room, the host picks map, tank count and difficulty; one device (first the host) settles every
+shot, a dropped player's tank goes to a computer, and they can rejoin from the same device ("Rejoin battle").
+Offline, `?seed=<number>` replays the same battle (the browser tests use it).
 
 ## Hosting and deploy
 

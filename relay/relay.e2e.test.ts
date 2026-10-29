@@ -65,7 +65,9 @@ describe('rooms: create, join, forward, leave', () => {
 
     const b = r.open(`/relay/test-game/${code.toLowerCase().slice(0, 2)}%20${code.toLowerCase().slice(2)}`);
     const helloB = await b.next();
-    assert.deepEqual({ ...helloB, openFor: 0 }, { t: RelayMsg.Hello, slot: 1, peers: [0], code, name: helloA.name, size: 4, open: true, openFor: 0 });
+    assert.deepEqual({ ...helloB, openFor: 0, key: undefined }, { t: RelayMsg.Hello, slot: 1, peers: [0], code, name: helloA.name, size: 4, open: true, openFor: 0, key: undefined });
+    assert.match(String(helloB.key), /^[A-Za-z0-9_-]{16}$/);
+    assert.notEqual(helloB.key, helloA.key);
     assert.deepEqual(await a.next(), { t: RelayMsg.Join, slot: 1 });
 
     b.send({ t: 'x', from: 99, n: 1 });
@@ -163,6 +165,29 @@ describe('lobby: sizes, names, open/lock/close, the room list (feature 004)', ()
     a.send({ t: RelayMsg.Close });
     assert.deepEqual([await a.closed, await b.closed], [CloseCode.Closed, CloseCode.Closed]);
     assert.equal(await r.open(`/relay/lobby-game/${code}`).closed, CloseCode.NoRoom);
+  });
+
+  test('rejoin (feature 007): a player who drops from a locked room comes back to the same slot with their key', async () => {
+    const { c: a, code } = await host(4);
+    const { c: b, hello: hb } = await join(code);
+    await a.next(); // b's join
+    a.send({ t: RelayMsg.Lock });
+    for (const x of [a, b]) await x.next(); // the room frame
+    b.ws.close();
+    assert.deepEqual(await a.next(), { t: RelayMsg.Leave, slot: 1 });
+    assert.equal(await r.open(`/relay/lobby-game/${code}`).closed, CloseCode.Started, 'no key');
+    assert.equal(await r.open(`/relay/lobby-game/${code}?key=wrong`).closed, CloseCode.Started, 'wrong key');
+    assert.equal(await r.open(`/relay/other-game/${code}?key=${hb.key}`).closed, CloseCode.NoRoom, 'another game');
+    const back = r.open(`/relay/lobby-game/${code}?key=${hb.key}`), hello = await back.next();
+    assert.deepEqual([hello.slot, hello.peers, hello.open], [1, [0], false]);
+    assert.notEqual(hello.key, hb.key);
+    assert.deepEqual(await a.next(), { t: RelayMsg.Join, slot: 1 });
+    back.send({ t: 'x', n: 1 });
+    assert.deepEqual(await a.next(), { t: 'x', from: 1, n: 1 });
+    back.ws.close(); await a.next();
+    assert.equal(await r.open(`/relay/lobby-game/${code}?key=${hb.key}`).closed, CloseCode.Started, 'a key works once');
+    a.ws.close();
+    await sleep(50);
   });
 
   test('when the host leaves, the next player takes over the controls', async () => {

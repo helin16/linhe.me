@@ -23,3 +23,20 @@ test('Snake Duel is on the home page and the games page, and its card opens the 
   await page.goto(Route.Games);
   await expect(page.getByText(/Customise your snake, play solo against computer snakes/)).toBeVisible();
 });
+
+test('Tank Clash is on the home page and the games page, and its card opens the game', async ({ page }) => {
+  await page.goto(Route.Home);
+  const card = page.getByRole('link', { name: /Tank Clash/ });
+  await expect(card).toContainText('1–2 players · Online up to 10 · iPad ready');
+  await card.click();
+  await expect(page).toHaveURL(/\/games\/tank-clash\/$/);
+  await expect(page.getByRole('heading', { name: 'Tank Clash' })).toBeVisible();
+  await page.goto(Route.Games);
+  await expect(page.getByText(/Blast the ground away under your rivals, grab air drops/)).toBeVisible();
+});
+
+test('the home page says Show Ground, with no name in the heading or welcome line', async ({ page }) => {
+  await page.goto(Route.Home);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Show Ground');
+  await expect(page.locator('.hero p')).toHaveText('Welcome! A few small games you can play right in your browser.');
+});

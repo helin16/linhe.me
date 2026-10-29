@@ -7,6 +7,8 @@ export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I/L
 export const CODE_LENGTH = 4;
 export const ROOMS_PATH = 'rooms';  // GET /relay/<game>/rooms lists open rooms
 export const SIZE_QUERY = 'size';   // /relay/<game>/new?size=8
+export const KEY_QUERY = 'key';     // /relay/<game>/<code>?key=… rejoins a started room (specs/007-tank-artillery/contracts/relay-rejoin.md)
+export const KEY_LENGTH = 16;
 export const MIN_ROOM_SIZE = 2;     // a room needs two players to be a room
 export const DEFAULT_ROOM_SIZE = 4; // when a create asks for no size
 export const MAX_SLOT = 64;         // every slot is below this (rooms are far smaller)
@@ -28,7 +30,8 @@ export type CloseCode = typeof CloseCode[keyof typeof CloseCode];
 
 /** `open`: the room is waiting (listed, joinable); `openFor`: ms since it last opened (the shared countdown clock). */
 export type RoomState = { open: boolean; openFor: number };
-export type Hello = { t: typeof RelayMsg.Hello; slot: number; peers: number[]; code: string; name: string; size: number } & RoomState;
+/** `key`: this slot's private rejoin key (only its owner ever sees it). */
+export type Hello = { t: typeof RelayMsg.Hello; slot: number; peers: number[]; code: string; name: string; size: number; key: string } & RoomState;
 export type RoomFrame = { t: typeof RelayMsg.Room } & RoomState;
 export type RoomInfo = { code: string; name: string; players: number; size: number };
 export type Join = { t: typeof RelayMsg.Join; slot: number };
@@ -41,10 +44,10 @@ export const normaliseCode = (code: string) => code.toUpperCase().replace(/\s+/g
 export const isGameName = (name: string) => /^[a-z0-9-]{1,32}$/.test(name);
 export const isRoomCode = (code: string) => code.length === CODE_LENGTH && [...code].every(c => CODE_ALPHABET.includes(c));
 
-/** `/relay/<game>/new[?size=N]` → create, `/relay/<game>/rooms` → list, `/relay/<game>/<code>` → join; anything
- *  else → null. `size` isn't range-checked here (the relay's largest room is configuration). */
+/** `/relay/<game>/new[?size=N]` → create, `/relay/<game>/rooms` → list, `/relay/<game>/<code>[?key=K]` → join (with a
+ *  rejoin key); anything else → null. `size` isn't range-checked here (the relay's largest room is configuration). */
 export function parseRelayPath(path: string, search = ''):
-  { game: string; create: true; size: number } | { game: string; list: true } | { game: string; code: string } | null {
+  { game: string; create: true; size: number } | { game: string; list: true } | { game: string; code: string; key?: string } | null {
   if (!path.startsWith(RELAY_PATH)) return null;
   let parts: string[];
   try { parts = path.slice(RELAY_PATH.length).split('/').map(decodeURIComponent); } catch { return null; }
@@ -57,17 +60,19 @@ export function parseRelayPath(path: string, search = ''):
     return /^\d{1,3}$/.test(size) ? { game, create: true, size: Number(size) } : null;
   }
   if (room === ROOMS_PATH) return { game, list: true };
-  const code = normaliseCode(room);
-  return isRoomCode(code) ? { game, code } : null;
+  const code = normaliseCode(room), key = new URLSearchParams(search).get(KEY_QUERY);
+  if (!isRoomCode(code)) return null;
+  return key !== null && /^[A-Za-z0-9_-]{1,64}$/.test(key) ? { game, code, key } : { game, code };
 }
 
 const under = (base: string, path: string) => new URL(path, base.endsWith('/') ? base : base + '/');
 
-/** The WebSocket address for a room (a code or NEW_ROOM, with a size when creating) under a relay base. */
-export function relayUrl(base: string, game: string, room: string, size?: number) {
+/** The WebSocket address for a room (a code or NEW_ROOM, with a size when creating, or a key when rejoining). */
+export function relayUrl(base: string, game: string, room: string, size?: number, key?: string) {
   const url = under(base, `${game}/${encodeURIComponent(room)}`);
   url.protocol = url.protocol.replace(/^http/, 'ws');
   if (size !== undefined) url.searchParams.set(SIZE_QUERY, String(size));
+  if (key !== undefined) url.searchParams.set(KEY_QUERY, key);
   return url.toString();
 }
 

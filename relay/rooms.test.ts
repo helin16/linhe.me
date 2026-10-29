@@ -13,16 +13,20 @@ let n = 0;
 const names = () => `Name ${n++}`;
 let clock = 1000;
 const now = () => clock;
-const rooms = (maxRooms = 10) => createRooms({ maxRooms }, codes, names, now);
+let k = 0;
+const keys = () => `key${k++}`;
+const rooms = (maxRooms = 10) => createRooms({ maxRooms }, codes, names, now, keys);
 const made = <T>(r: T | 'busy') => { assert.ok(r !== 'busy'); return r as T; };
 
 test('create gives a code, slot 0, a name, the size and an open room; joiners get the lowest free slot', () => {
   const r = rooms();
   const a = client(), b = client(), c = client();
   const room = made(r.create('g', a, 4));
-  assert.deepEqual({ ...room, code: undefined, name: undefined }, { code: undefined, name: undefined, slot: 0, peers: [], size: 4, open: true, openFor: 0 });
+  assert.deepEqual({ ...room, code: undefined, name: undefined, key: undefined }, { code: undefined, name: undefined, key: undefined, slot: 0, peers: [], size: 4, open: true, openFor: 0 });
   clock += 500;
-  assert.deepEqual(r.join('g', room.code, b), { slot: 1, peers: [0], name: room.name, size: 4, open: true, openFor: 500 });
+  const joined = r.join('g', room.code, b) as { key: string };
+  assert.deepEqual({ ...joined, key: undefined }, { slot: 1, peers: [0], name: room.name, size: 4, open: true, openFor: 500, key: undefined });
+  assert.notEqual(joined.key, room.key);
   assert.deepEqual(a.got, [{ t: RelayMsg.Join, slot: 1 }]);
   assert.deepEqual((r.join('g', room.code, c) as { slot: number }).slot, 2);
   r.leave('g', room.code, 1);
@@ -142,4 +146,41 @@ test('the default clock and generators work', () => {
   const room = made(r.create('g', client(), 4));
   assert.match(room.code, /^[A-Z2-9]{4}$/);
   assert.match(room.name, /^[A-Z][a-z]+ [A-Z][a-z]+$/);
+});
+
+test('rejoin: a player who leaves a locked room keeps their slot for their key, once, until the room reopens', () => {
+  const r = rooms();
+  const a = client(), b = client();
+  const room = made(r.create('g', a, 3));
+  const bJoin = r.join('g', room.code, b) as { slot: number; key: string };
+  r.control('g', room.code, 0, RelayMsg.Lock);
+  r.leave('g', room.code, 1);
+  assert.deepEqual(a.got.at(-1), { t: RelayMsg.Leave, slot: 1 });
+  assert.equal(r.join('g', room.code, client()), 'started', 'no key');
+  assert.equal(r.join('g', room.code, client(), 'wrong'), 'started', 'wrong key');
+  assert.equal(r.join('other', room.code, client(), bJoin.key), 'no-room', 'another game');
+  const back = r.join('g', room.code, client(), bJoin.key) as { slot: number; key: string; peers: number[] };
+  assert.equal(back.slot, 1);
+  assert.deepEqual(back.peers, [0]);
+  assert.notEqual(back.key, bJoin.key, 'a new key');
+  assert.deepEqual(a.got.at(-1), { t: RelayMsg.Join, slot: 1 });
+  r.leave('g', room.code, 1);
+  assert.equal(r.join('g', room.code, client(), bJoin.key), 'started', 'an old key works once');
+  r.control('g', room.code, 0, RelayMsg.Open);
+  assert.equal((r.join('g', room.code, client(), back.key) as { slot: number }).slot, 1, 'reopened: the key is ignored, the slot free for anyone');
+});
+
+test('reopening frees kept slots for anyone; locked rooms are never listed', () => {
+  const r = rooms();
+  const room = made(r.create('g', client(), 3));
+  const b = r.join('g', room.code, client()) as { key: string };
+  r.join('g', room.code, client());
+  r.control('g', room.code, 0, RelayMsg.Lock);
+  r.leave('g', room.code, 1);
+  r.control('g', room.code, 0, RelayMsg.Open); // reopened: the slot is free again
+  assert.equal((r.join('g', room.code, client()) as { slot: number }).slot, 1);
+  assert.equal(r.join('g', room.code, client(), b.key), 'full');
+  r.control('g', room.code, 0, RelayMsg.Lock);
+  r.leave('g', room.code, 2);
+  assert.deepEqual(r.list('g'), [], 'locked rooms are never listed');
 });

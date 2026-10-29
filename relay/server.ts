@@ -65,7 +65,7 @@ export function startRelay(config: Config, log?: (line: string) => void) {
       if (made === 'busy') return ws.close(CloseCode.Busy);
       ({ code, ...room } = made);
     } else {
-      const joined = rooms.join(target.game, target.code, peer);
+      const joined = rooms.join(target.game, target.code, peer, target.key);
       if (joined === 'no-room') return ws.close(CloseCode.NoRoom);
       if (joined === 'full') return ws.close(CloseCode.Full);
       if (joined === 'started') return ws.close(CloseCode.Started);

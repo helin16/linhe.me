@@ -9,16 +9,17 @@ import './lobby.css';
 
 /** The popup's and waiting room's buttons. */
 export const OnlineAction = {
-  Host: 'host-room', Join: 'join-room', Copy: 'copy-link', Leave: 'leave-room', Cancel: 'cancel-room', Close: 'close-lobby',
+  Host: 'host-room', Join: 'join-room', Copy: 'copy-link', Leave: 'leave-room', Cancel: 'cancel-room', Close: 'close-lobby', Rejoin: 'rejoin-room',
 } as const;
 export type OnlineAction = typeof OnlineAction[keyof typeof OnlineAction];
 
 const TICK_MS = 250; // how often the countdown is checked
 
-/** A room we're in: `deadline` is when its countdown ends on our clock; `open` = waiting (not playing). */
+/** A room we're in: `deadline` is when its countdown ends on our clock; `open` = waiting (not playing); `key`: our
+ *  private key for rejoining it if we drop mid-game. */
 export type LobbyRoom<P extends Look> = {
   slot: number; peers: Set<number>; profiles: Record<number, P>; code: string; name: string; size: number;
-  open: boolean; deadline: number;
+  open: boolean; deadline: number; key: string;
 };
 
 export type LobbyOptions = {
@@ -39,6 +40,9 @@ export type LobbyOptions = {
   onCountdownEnd: () => void;     // the host's countdown reached 0 in the garage
   onDeactivate: () => void;       // the popup was closed
   onChange: () => void;           // after every redraw (for the game's own buttons)
+  rowTag?: (slot: number) => string;  // a label on a player's row (Tank Clash: their side)
+  bots?: (players: number, size: number) => number; // computer players to show (default: the room's free spots)
+  rejoin?: () => { code: string; key: string } | null; // a game we dropped out of: offers "Rejoin battle" (asked on every redraw: keep it cheap)
 };
 
 // a coloured dot and text spans; text goes in as text, never markup (names are players' own)
@@ -48,8 +52,9 @@ function rowItem(dot: string, ...texts: [cls: string, text: string][]) {
   li.append(d, ...texts.map(([cls, text]) => Object.assign(document.createElement('span'), {className: cls, textContent: text})));
   return li;
 }
-function rosterItem(r: RosterRow) {
-  const tags: [string, string][] = [...(r.host ? [['tag', 'host'] as [string, string]] : []), ...(r.you ? [['tag', 'you'] as [string, string]] : [])];
+function rosterItem(r: RosterRow, label?: string) {
+  const tags: [string, string][] = [...(label ? [['tag', label] as [string, string]] : []),
+    ...(r.host ? [['tag', 'host'] as [string, string]] : []), ...(r.you ? [['tag', 'you'] as [string, string]] : [])];
   const li = rowItem(r.color, ['slot', `P${r.slot + 1}`], ['name', r.name], ...tags);
   li.classList.toggle('mine', r.you);
   return li;
@@ -62,6 +67,7 @@ export function createLobby<P extends Look>(o: LobbyOptions) {
   popup.innerHTML = `<div class="box">
   <button class="close" data-online="${OnlineAction.Close}" aria-label="Close">✕</button>
   <h2 id="lobbyTitle">Online rooms</h2>
+  <button class="opt" id="rejoin" data-online="${OnlineAction.Rejoin}">Rejoin battle</button>
   <div id="roomList"></div>
   <div id="netInfo" role="status"></div>
   <div class="host-row"><label>Players <select id="cSize">${o.sizes.map(n => `<option${n === o.defaultSize ? ' selected' : ''}>${n}</option>`).join('')}</select></label><button class="opt" data-online="${OnlineAction.Host}">Host a room</button></div>
@@ -109,6 +115,7 @@ export function createLobby<P extends Look>(o: LobbyOptions) {
   function render() {
     $('netInfo').textContent = !active ? '' : connecting ? 'Connecting…' : info;
     popup.style.display = visible() ? '' : 'none';
+    $('rejoin').style.display = visible() && o.rejoin?.() ? '' : 'none';
     o.panel.style.display = active ? '' : 'none';
     $('onlineRoom').style.display = room ? '' : 'none';
     if (room) {
@@ -118,11 +125,12 @@ export function createLobby<P extends Look>(o: LobbyOptions) {
       $('countdown').textContent = room.open ? `Starts in ${secondsLeft(room.deadline)}s` : 'Playing';
       $('roomInfo').textContent = `Online as P${room.slot + 1} · ${o.roomInfo(host)}`;
       $('roomCode').textContent = room.code;
-      const rows = rosterRows(room.slot, room.peers, room.profiles, o.own()), key = JSON.stringify([room.size, rows]);
+      const rows = rosterRows(room.slot, room.peers, room.profiles, o.own());
+      const tags = rows.map(r => o.rowTag?.(r.slot)), key = JSON.stringify([room.size, rows, tags]);
       if (key !== rosterKey) { // render runs on every network message, many a second mid-game
         rosterKey = key;
-        $('roster').replaceChildren(...rows.map(rosterItem));
-        const bots = computerSpots(room.size, room.peers.size + 1);
+        $('roster').replaceChildren(...rows.map((r, i) => rosterItem(r, tags[i])));
+        const players = room.peers.size + 1, bots = o.bots ? o.bots(players, room.size) : computerSpots(room.size, players);
         $('botCount').textContent = bots ? `+${bots} ${o.botWord}` : '';
       }
       o.panel.querySelector<HTMLElement>(`[data-online="${OnlineAction.Cancel}"]`)!.style.display = host ? '' : 'none';
@@ -131,15 +139,15 @@ export function createLobby<P extends Look>(o: LobbyOptions) {
     o.onChange();
   }
 
-  /** Hosts (code = NEW_ROOM, with a size) or joins a room. */
-  function open(code: string, size?: number) {
+  /** Hosts (code = NEW_ROOM, with a size) or joins a room (with a key: rejoins a game we dropped out of). */
+  function open(code: string, size?: number, key?: string) {
     if (conn) return;
     info = ''; connecting = true;
     conn = connect(code, o.game, {
       hello: (h: Hello) => {
         connecting = false;
         room = {slot: h.slot, peers: new Set(h.peers), profiles: {}, code: h.code, name: h.name, size: h.size,
-          open: h.open, deadline: deadlineFrom(h.openFor, o.countdownMs)};
+          open: h.open, deadline: deadlineFrom(h.openFor, o.countdownMs), key: h.key};
         o.onHello(); render();
       },
       room: r => { if (room) { room.open = r.open; room.deadline = deadlineFrom(r.openFor, o.countdownMs); render(); } },
@@ -153,7 +161,7 @@ export function createLobby<P extends Look>(o: LobbyOptions) {
         render();
       },
       closed: text => { conn = room = null; connecting = false; info = text; o.onClosed(text); render(); poll(); },
-    }, {size});
+    }, {size, key});
     render();
   }
   function leave() {
@@ -166,6 +174,8 @@ export function createLobby<P extends Look>(o: LobbyOptions) {
     const action = b.dataset.online;
     if (action === OnlineAction.Host) open(NEW_ROOM, Number(cSize.value));
     if (action === OnlineAction.Join && cCode.value.trim()) open(cCode.value);
+    const back = action === OnlineAction.Rejoin && o.rejoin?.();
+    if (back) open(back.code, undefined, back.key);
     if (action === OnlineAction.Leave) leave();
     if (action === OnlineAction.Cancel) { send({t: RelayMsg.Close}); leave(); } // guests get 4410
     if (action === OnlineAction.Close) { if (conn) leave(); active = false; o.onDeactivate(); render(); }

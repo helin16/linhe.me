@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 
-export const GameSlug = { TurboTumble: 'turbo-tumble', SnakeDuel: 'snake-duel' } as const;
+export const GameSlug = { TurboTumble: 'turbo-tumble', SnakeDuel: 'snake-duel', TankClash: 'tank-clash' } as const;
 export type GameSlug = typeof GameSlug[keyof typeof GameSlug];
 
 // The one games list: the home page, the games page and the router all read it.
@@ -37,5 +37,16 @@ export const games: GameEntry[] = [
     tag: 'Mouse, keyboard or touch · 1–2 players · online up to 8',
     art: '🐍',
     load: () => import('./snake-duel/index.tsx'),
+  },
+  {
+    slug: GameSlug.TankClash,
+    name: 'Tank Clash',
+    summary: 'Turn-based tank battles on hills you can blow apart.',
+    description:
+      'Pick a tank, tilt your cannon, mind the wind and fire across hills, bridges, lakes and snow. Blast the ground away under your rivals, grab air drops, and play solo against computer tanks, with a friend on one device, or with up to 9 others online.',
+    homeTag: '1–2 players · Online up to 10 · iPad ready',
+    tag: 'Keyboard or touch · 1–2 players · online up to 10',
+    art: '💥',
+    load: () => import('./tank-clash/index.tsx'),
   },
 ];

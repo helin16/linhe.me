@@ -13,7 +13,7 @@ export const NetText = {
   Unavailable: "Online play isn't available right now",
   NoRoom: 'No room with that code',
   Full: 'That room is full',
-  Started: 'That race has already started',
+  Started: 'That game has already started',
   Closed: 'The host closed the room',
   Disconnected: 'Disconnected from the room',
   NoRooms: 'No rooms waiting — host one!',
@@ -47,13 +47,13 @@ type Socket = {
 
 const defaultBase = () => import.meta.env?.VITE_RELAY_URL ?? location.origin + RELAY_PATH;
 
-type ConnectOptions = { size?: number; base?: string; open?: (url: string) => Socket; timeout?: number };
+type ConnectOptions = { size?: number; key?: string; base?: string; open?: (url: string) => Socket; timeout?: number };
 
-/** Opens a room connection for `game` (`room` is a code, or NEW_ROOM with a `size` to create one). `closed` fires
- *  once, with the reason. */
-export function connect(room: string, game: GameSlug, on: Handlers, { size, base = defaultBase(),
+/** Opens a room connection for `game` (`room` is a code, or NEW_ROOM with a `size` to create one; a `key` rejoins a
+ *  started room). `closed` fires once, with the reason. */
+export function connect(room: string, game: GameSlug, on: Handlers, { size, key, base = defaultBase(),
   open = url => new WebSocket(url) as unknown as Socket, timeout = CONNECT_TIMEOUT_MS }: ConnectOptions = {}) {
-  const ws = open(relayUrl(base, game, room, size));
+  const ws = open(relayUrl(base, game, room, size, key));
   let hadHello = false, done = false;
   const finish = (text: NetText) => {
     if (done) return;

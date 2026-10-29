@@ -15,7 +15,7 @@ test('close codes map to the messages players see', () => {
   assert.equal(NetText.NoRoom, 'No room with that code');
   assert.equal(NetText.Full, 'That room is full');
   assert.equal(NetText.Disconnected, 'Disconnected from the room');
-  assert.equal(NetText.Started, 'That race has already started');
+  assert.equal(NetText.Started, 'That game has already started');
   assert.equal(NetText.Closed, 'The host closed the room');
 });
 

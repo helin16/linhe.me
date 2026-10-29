@@ -7,6 +7,7 @@ test('relayUrl builds ws(s) addresses for creating and joining', () => {
   assert.equal(relayUrl('http://localhost:5173/relay/', 'turbo-tumble', 'K7QP'), 'ws://localhost:5173/relay/turbo-tumble/K7QP');
   assert.equal(relayUrl('wss://example.com/relay', 'g', 'K7QP'), 'wss://example.com/relay/g/K7QP');
   assert.equal(relayUrl('https://example.com/relay/', 'g', NEW_ROOM, 8), 'wss://example.com/relay/g/new?size=8');
+  assert.equal(relayUrl('https://example.com/relay/', 'g', 'K7QP', undefined, 'abc_-1'), 'wss://example.com/relay/g/K7QP?key=abc_-1');
 });
 
 test('roomsUrl gives the http(s) list address, even from a ws(s) base', () => {
@@ -17,6 +18,8 @@ test('roomsUrl gives the http(s) list address, even from a ws(s) base', () => {
 
 test('parseRelayPath reads create and join paths and rejects bad ones', () => {
   assert.deepEqual(parseRelayPath('/relay/turbo-tumble/new'), { game: 'turbo-tumble', create: true, size: DEFAULT_ROOM_SIZE });
+  assert.deepEqual(parseRelayPath('/relay/g/K7QP', '?key=abc_-1'), { game: 'g', code: 'K7QP', key: 'abc_-1' });
+  assert.deepEqual(parseRelayPath('/relay/g/K7QP', '?key=bad%20key'), { game: 'g', code: 'K7QP' }, 'a malformed key is no key');
   assert.deepEqual(parseRelayPath('/relay/turbo-tumble/new', '?size=12'), { game: 'turbo-tumble', create: true, size: 12 });
   for (const bad of ['?size=', '?size=x', '?size=-1', '?size=1.5', '?size=9999'])
     assert.equal(parseRelayPath('/relay/turbo-tumble/new', bad), null, bad);
