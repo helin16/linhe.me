@@ -127,7 +127,7 @@ battles, computer takeover and rejoin.
 
 - [X] T031 [P] `README.md`: Tank Clash (modes, controls, tank types, maps, air drops, online sides and rejoin, `?seed=`) and the relay's rejoin key
 - [X] T032 Performance tuning (SC-002): 10 tanks, a shell and an explosion hold 60 fps on desktop and the iPad project; profile drawing and carving if T009's frame check is close
-- [ ] T033 Run `yarn test` (100% functions) and `yarn e2e:local`; confirm Turbo Tumble and Snake Duel online e2e still pass after the relay and lobby changes
+- [X] T033 Run `yarn test` (100% functions) and `yarn e2e:local`; confirm Turbo Tumble and Snake Duel online e2e still pass after the relay and lobby changes
 - [X] T034 `/code-review` on the diff, also confirming no names, graphics, sounds or text are taken from Scorched Earth, the reference tank games or the hill-climb games (FR-018); fix each finding or note why it was skipped
 - [ ] T035 Commit with any waivers; push; CI green (including Firefox)
 - [ ] T036 `yarn deploy` (relay included); check quickstart steps 1–10 live
