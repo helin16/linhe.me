@@ -105,6 +105,4 @@ export const GLIDE_S = 0.2;            // the camera's smoothing time constant: 
 export const MAX_STEP = 0.05;          // the most a view may move or resize in a frame, as a share of its width
 export const SETTLE_HOLD_S = 0.3;      // after a shot, the view stays on its blast this long once the battle settles
 export const LOOK_STEP = 120;          // units the view moves per [ or ] press
-export const LOW_DETAIL_FPS = 55;      // below this after DETAIL_PROBE_S, drop to low detail (aiming for 60, at least 50)
-export const DETAIL_PROBE_S = 2;
 export const OVERVIEW_OPACITY = 0.6;

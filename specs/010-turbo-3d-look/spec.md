@@ -118,7 +118,7 @@ at today's target; on a slow device the game switches to low detail.
 ### Edge Cases
 
 - **Gameplay unchanged**: kart sizes for collisions, speeds, drifting, items and their effects, lap counting, the
-  minimap and standings stay exactly as today; seeded races give the same results.
+  minimap and standings stay exactly as today (the race code isn't edited: SC-002).
 - **Online**: every screen draws the same race; the look changes nothing that is sent between screens.
 - **Split screen**: everything drawn twice must still be smooth; low detail applies to both halves.
 - **Items on the track**: item boxes, Goo puddles and the Zap effect stay as easy to see and tell apart as today.
@@ -137,7 +137,7 @@ at today's target; on a slow device the game switches to low detail.
   screen (online), the steering is read from how the kart turns, since online messages carry no steering and stay
   unchanged (FR-010).
 - **FR-002**: Wheels MUST turn as the kart moves; karts MUST keep today's leaning, drifting and item effects (Turbo
-  flames, Goo slowdown, Zap spin) in the new look.
+  boost, Goo slowdown, Zap spin) in the new look.
 - **FR-002a**: While a kart drifts, small puffs MUST come from behind its wheels in its track's kind (dust, sand,
   snow or neon glints), and its drift spark's colour MUST show the drift's charge (growing towards a boost); both are
   off in low detail. They show the drift that today's rules already work out, and change nothing in it; the spark's
@@ -180,10 +180,14 @@ at today's target; on a slow device the game switches to low detail.
 
 ### Measurable Outcomes
 
-- **SC-001**: The race stays as smooth as today with eight karts and every effect on (drift puffs, moving effects,
-  start-line props): the existing frame-rate test still passes, and split screen on a desktop holds at least 50 frames
-  a second.
-- **SC-002**: The same seeded race gives the same finishing order and times before and after the change.
+- **SC-001**: The race stays smooth: a new frame-rate test (Turbo Tumble has none yet) measures at least 50 frames a
+  second in Chromium for a race, for split screen on a desktop and for an eight-kart online room, once the game has
+  settled its detail. The test browser draws in software, where full detail runs at about 37 frames a second, so there
+  it drops to low detail (FR-009); a race with every effect on (drift puffs, moving effects, start-line props) is checked
+  on real devices (SC-006).
+- **SC-002**: The race itself is unchanged: its code (physics, items, computer racers, online) is not edited, and every
+  existing Turbo Tumble test (online, lobby, standings, loading) passes unchanged. (Races aren't seeded, so the same race
+  can't be replayed for comparison.)
 - **SC-003**: People shown each kart type for 2 seconds name it correctly at least 9 times out of 10 (manual check
   with 5 people).
 - **SC-004**: In side-by-side screenshots of the same race before and after, at least 4 of 5 people say the new one looks

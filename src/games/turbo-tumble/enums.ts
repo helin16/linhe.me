@@ -24,3 +24,24 @@ export type EditTab = typeof EditTab[keyof typeof EditTab];
 // buttons on the race-finished screen
 export const EndAction = { Again: 'again', Garage: 'garage' } as const;
 export type EndAction = typeof EndAction[keyof typeof EndAction];
+
+// the 3D look (specs/010-turbo-3d-look): what each track's road, ground, light, scenery and effects are made of
+export const RoadKind = { Tarmac: 'tarmac', Sand: 'packed-sand', Neon: 'neon-lanes' } as const;
+export type RoadKind = typeof RoadKind[keyof typeof RoadKind];
+
+export const GroundKind = { Grass: 'grass', Sand: 'sand', Snow: 'snow', Grid: 'neon-grid' } as const;
+export type GroundKind = typeof GroundKind[keyof typeof GroundKind];
+
+export const LightKind = { Sun: 'sun', Night: 'night' } as const;
+export type LightKind = typeof LightKind[keyof typeof LightKind];
+
+export const LayerKind = { Hills: 'hills', Dunes: 'dunes', Mountains: 'mountains', Towers: 'towers' } as const;
+export type LayerKind = typeof LayerKind[keyof typeof LayerKind];
+
+// one light moving effect per track (FR-006a)
+export const Effect = { Snow: 'snowfall', Dust: 'dust', Birds: 'birds', Pulse: 'pulse' } as const;
+export type Effect = typeof Effect[keyof typeof Effect];
+
+// what comes from behind the wheels while drifting (FR-002a)
+export const PuffKind = { Dust: 'dust', Sand: 'sand', Snow: 'snow', Glint: 'glint' } as const;
+export type PuffKind = typeof PuffKind[keyof typeof PuffKind];

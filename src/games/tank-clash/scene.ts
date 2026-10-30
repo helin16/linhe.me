@@ -5,11 +5,13 @@
 // browser (WebGL), so it is covered by the end-to-end tests (constitution VII). Field y points down; three's y up.
 import * as THREE from 'three';
 import {
-  CAMERA_FOV, CAMERA_TILT_DEG, CELL, DETAIL_PROBE_S, FAR_LAYER_Z, GRID_H, GRID_W, GROUND_DEPTH, LOW_DETAIL_FPS, NEAR_LAYER_Z, TANK_H, TANK_W,
+  CAMERA_FOV, CAMERA_TILT_DEG, CELL, FAR_LAYER_Z, GRID_H, GRID_W, GROUND_DEPTH, NEAR_LAYER_Z, TANK_H, TANK_W,
   WORLD_H, WORLD_W,
 } from './constants.ts';
 import { GroundPart, MapId, Material, Phase, Variant } from './enums.ts';
 import { groundMesh, type Surface } from './ground.ts';
+import { Detail, detailProbe, LOW_DETAIL_RATIO } from '../../shared/detail.ts';
+import { softwareGpu, texture as paint } from '../../shared/render.ts';
 import { crateModel, parachuteModel, propModels, setAim, setGear, setWreck, shared, shellModel, tankModel } from './models.ts';
 import type { TankLook } from './settings.ts';
 import { activeTank, facing, tiltOf, type Battle } from './sim.ts';
@@ -22,7 +24,6 @@ const TEX = 256;         // procedural textures' size in pixels (they cover 64 u
 const EDGE_REACH = 4000; // the ground and scenery carry on this far past the field's sides
 const BOOM_S = 0.9;      // an explosion shows this long
 const SPLINTERS = 18;    // pieces of wood flying from a broken bridge, at most
-const LOW_DETAIL_RATIO = 0.75; // low detail draws at this pixel ratio (fewer pixels to fill)
 const OUTLINE = '#1d1d24';
 const y3 = (y: number) => WORLD_H - y; // field y (down) to three's (up)
 
@@ -36,13 +37,7 @@ export const SCENES: Record<PlayableMap, Look> = {
 };
 
 // --- procedural textures (clean and simple: FR-015) ---
-function texture(draw: (c: CanvasRenderingContext2D, rnd: () => number) => void) {
-  const cv = document.createElement('canvas'); cv.width = cv.height = TEX;
-  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  draw(cv.getContext('2d')!, rnd);
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
-  return t;
-}
+const texture = (draw: (c: CanvasRenderingContext2D, rnd: () => number) => void) => paint(TEX, draw);
 const dots = (c: CanvasRenderingContext2D, rnd: () => number, n: number, color: string, r: number) => {
   c.fillStyle = color;
   for (let i = 0; i < n; i++) { c.beginPath(); c.arc(rnd() * TEX, rnd() * TEX, r * (0.5 + rnd()), 0, Math.PI * 2); c.fill(); }
@@ -219,15 +214,6 @@ function skyTexture(s: Look) {
   return new THREE.CanvasTexture(cv);
 }
 
-/** Is WebGL drawn by the processor (a software renderer, as in headless test browsers)? Antialiasing there halves the
- *  frame rate (research R10); on a graphics chip it is cheap and smooths every edge. */
-function softwareGpu() {
-  const gl = document.createElement('canvas').getContext('webgl'), info = gl?.getExtension('WEBGL_debug_renderer_info');
-  const name = gl && info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
-  gl?.getExtension('WEBGL_lose_context')?.loseContext();
-  return !gl || /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
-}
-
 /** The scene for one canvas, with a flat layer (`labels`) over it. */
 export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement) {
   const touch = navigator.maxTouchPoints > 0;
@@ -246,7 +232,7 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
   const ground = groundMaterials(), world = new THREE.Group(); scene.add(world);
   const painted = groundShader(Object.fromEntries(Object.entries(ground).map(([k, m]) => [k, m.map!])) as Record<GroundPart, THREE.Texture>);
   const ctx = labels.getContext('2d')!;
-  let lowDetail = false, probeT = 0, probeFrames = 0, probing = false, drewLast = false;
+  const probe = detailProbe(), low = () => probe.detail === Detail.Low;
 
   // --- the battle shown: rebuilt when it is a different one ---
   type Shown = {
@@ -290,7 +276,7 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     if (!shown || shown.b.terrain !== t) return;
     shown.stale = true;
     let n = 0; // splinters where wood was and isn't any more
-    for (let i = 0; i < t.cells.length && n < SPLINTERS * (lowDetail ? 0.5 : 1); i++) {
+    for (let i = 0; i < t.cells.length && n < SPLINTERS * (low() ? 0.5 : 1); i++) {
       if (shown.seen[i] !== Material.Wood || t.cells[i] !== Material.Air || (i * 7) % 5) continue;
       const m = new THREE.Mesh(new THREE.BoxGeometry(6, 2, 3), ground[GroundPart.Wood]);
       m.position.set((i % GRID_W + 0.5) * CELL, y3((Math.floor(i / GRID_W) + 0.5) * CELL), GROUND_DEPTH / 2 + 2);
@@ -377,7 +363,7 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
       flash.scale.setScalar(boom.r * p); (flash.material as THREE.MeshStandardMaterial).opacity = fade;
       core.scale.setScalar(boom.r * p); (core.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - boom.t / 0.6);
       smoke.forEach((m, i) => {
-        m.visible = !lowDetail || i % 2 === 0;
+        m.visible = !low() || i % 2 === 0;
         m.position.set(Math.cos(i) * boom.r * 0.6, boom.t * 60 + Math.sin(i * 2) * boom.r * 0.4, Math.sin(i * 3) * 10);
         m.scale.setScalar(boom.r * (0.6 + boom.t)); (m.material as THREE.MeshStandardMaterial).opacity = 0.5 * fade;
       });
@@ -490,19 +476,14 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     rebuildGround(s); syncTanks(s); syncCrates(s); syncShot(s); syncBits(s, dt);
     const key = pictureKey(s);
     const drew = changed || key !== lastKey;
-    if (changed) drewLast = false; // a ground rebuild's slow frame says nothing about the GPU: the probe skips it
+    if (changed) probe.skip(); // a ground rebuild's slow frame says nothing about the GPU
     if (drew) { renderer.render(scene, camera); lastKey = s.bits.length ? '' : key; } // flying splinters: every frame
     drawLabels(b, time);
-    // the frame rate is measured over frames that redrew one after another (idle frames are cheap: they'd hide a slow GPU)
-    if (probing && drew && drewLast) {
-      probeT += dt; probeFrames++;
-      if (probeT >= DETAIL_PROBE_S) { probing = false; if (probeFrames / probeT < LOW_DETAIL_FPS) lowerDetail(); }
-    }
-    drewLast = drew;
+    if (probe.frame(dt, drew)) lowerDetail();
   }
   function lowerDetail() {
     lastKey = '';
-    lowDetail = true; ratio = LOW_DETAIL_RATIO; renderer.setPixelRatio(ratio); renderer.shadowMap.enabled = false;
+    ratio = LOW_DETAIL_RATIO; renderer.setPixelRatio(ratio); renderer.shadowMap.enabled = false;
     scene.traverse(o => { if (o instanceof THREE.Mesh) o.material.needsUpdate = true; });
     resize();
   }
@@ -515,9 +496,9 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     /** A heart rises from tank `id` (a repair kit picked up). */
     cheer: (id: number, time: number) => cheers.push({ id, at: time }),
     /** A battle started: measure the frame rate for a moment, then lower the detail if it is slow. */
-    probe: () => { probing = !lowDetail; probeT = 0; probeFrames = 0; },
-    /** 'probing' while the frame rate is being measured, then 'low' or 'full'. */
-    get detail() { return probing ? 'probing' : lowDetail ? 'low' : 'full'; },
+    probe: () => probe.restart(),
+    /** Probing while the frame rate is being measured, then low or full. */
+    get detail(): Detail { return probe.detail; },
     dispose: () => { dispose(scene); dispose(preview); painted.dispose(); renderer.dispose(); },
   };
 }

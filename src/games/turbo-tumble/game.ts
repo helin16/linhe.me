@@ -1,5 +1,6 @@
-// Turbo Tumble, ported from the original single-page script. Gameplay, tuning and visuals are unchanged;
-// the game now renders into `root` and mount() returns a cleanup that leaves the page as it found it.
+// Turbo Tumble, ported from the original single-page script. Gameplay and tuning are unchanged; the look is the toy-like
+// 3D of specs/010-turbo-3d-look (karts: look.ts; light, scenery and effects: view.ts). The game renders into `root` and
+// mount() returns a cleanup that leaves the page as it found it.
 import * as THREE from 'three';
 import { isMember, values } from '../../shared/enum.ts';
 import { Action, EditTab, EndAction, Item, MsgType, RaceState } from './enums.ts';
@@ -9,15 +10,19 @@ import { createLobby, type LobbyRoom } from '../../shared/online/lobby.ts';
 import { GameSlug } from '../index.ts';
 import { KartStyle, loadSaved, saveSettings, Track, type PlayerLook } from './settings.ts';
 import { COMPACT_MEDIA, standingRows, type Standing } from './standings.ts';
+import { disposeModel, kartModel, setSteer, SHAPES, spinWheels, steerFrom, TRACK_LOOKS, type KartModel } from './look.ts';
+import { bake, chequers, createView, FOG_FAR, FOG_NEAR, HELMET_TOP, RENDER_WORLD, TEX_METRES, trackTextures } from './view.ts';
+import { Detail, detailProbe, LOW_DETAIL_RATIO } from '../../shared/detail.ts';
+import { softwareGpu } from '../../shared/render.ts';
 
 type Vec = THREE.Vector3;
-type StyleDef = { speed: number; turn: number; off: number; body: [number, number, number]; wheel: number; bars: [number, number, number] };
+type StyleDef = { speed: number; turn: number; off: number; bars: [number, number, number] };
 type Look = { name: string; color: number; helmet: number; skin: number; style: KartStyle };
 type Input = { accel: number; steer: number; drift: boolean };
-type Prop = [THREE.BufferGeometry, THREE.Material, number];
-type MapDef = { pts: [number, number][]; sky: number; ground: number; road: number; curb: [number, number]; wall: [number, number]; light: number; glow?: boolean; prop: () => Prop[] };
+type Prop = [THREE.BufferGeometry, THREE.Material, number, number?]; // geometry, material, height, height scale
+type MapDef = { pts: [number, number][]; sky: number; ground: number; road: number; curb: [number, number]; wall: [number, number]; light: number; glow?: boolean; prop: () => Prop[]; shade: [number, number] }; // shade: a scenery piece's shadow radius and height (0: none)
 type Kart = Look & {
-  pn: number; g: THREE.Group; m: THREE.Group; spark: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  pn: number; g: THREE.Group; m: THREE.Group; spark: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; model: KartModel | null;
   pos: Vec; idx: number; lap: number; lat: number; speed: number; h: number; camH: number;
   boost: number; spin: number; drift: number; charge: number; item: Item | null; itemT: number;
   finished: boolean; finishTime: number; skill: number; lane: number; wrongT: number;
@@ -62,9 +67,9 @@ const GAME_VIEWPORT = 'width=device-width,initial-scale=1,maximum-scale=1,user-s
 const LAPS = 3, W = 18, N = 600, MAX = 42, ACC = 30, WALL = W / 2 + 10;
 // speed/turn multiply the base values; off = top-speed factor on grass; bars = garage display
 const STYLES: Record<KartStyle, StyleDef> = {
-  [KartStyle.Classic]: {speed: 1,    turn: 1,    off: 0.45, body: [2.2, 0.7, 3.4], wheel: 0.5,  bars: [3, 3, 2]},
-  [KartStyle.Buggy]:   {speed: 0.95, turn: 1.1,  off: 0.7,  body: [2.6, 0.9, 3.0], wheel: 0.65, bars: [2, 4, 4]},
-  [KartStyle.Rocket]:  {speed: 1.06, turn: 0.88, off: 0.4,  body: [1.8, 0.6, 4.0], wheel: 0.45, bars: [5, 2, 1]},
+  [KartStyle.Classic]: {speed: 1,    turn: 1,    off: 0.45, bars: [3, 3, 2]},
+  [KartStyle.Buggy]:   {speed: 0.95, turn: 1.1,  off: 0.7,  bars: [2, 4, 4]},
+  [KartStyle.Rocket]:  {speed: 1.06, turn: 0.88, off: 0.4,  bars: [5, 2, 1]},
 };
 const SKINS = ['#ffe0bd', '#f1c27d', '#c68642', '#8d5524', '#5c3a1e', '#7fdc6a', '#9ec5ff'];
 const RACERS: Look[] = [
@@ -90,6 +95,12 @@ const CONTROLS: Record<Action, string>[] = [
 const ICON: Record<Item, string> = {[Item.Turbo]: '🚀', [Item.Goo]: '🟢', [Item.Zap]: '⚡'};
 const ITEMS = values(Item);
 const MAX_PUDDLES = 24; // far more than a race leaves on the track
+const CAMERA_FAR = 2500;  // far enough for the farthest scenery ring
+const PUFF_STEER = 0.3;   // a kart driven elsewhere puffs while its spark is on and it turns at least this hard (FR-002a)
+const PUFF_CHANCE = 0.5;  // each rear wheel puffs on about half the frames of a drift
+const KART_SHADOW_H = 0.8; // a kart's shadow is cast from about this high (its body)
+const KERB_RISE = 0.22;   // kerbs' rounded hump (metres)
+const POST_EVERY = 8;     // a barrier post every this many track segments
 
 export function mount(root: HTMLElement): () => void {
   const listening = new AbortController(), signal = listening.signal;
@@ -151,23 +162,28 @@ export function mount(root: HTMLElement): () => void {
 
   // --- scene ---
   const scene = new THREE.Scene();
-  const sky = new THREE.Color(0x7ec8f0), fog = new THREE.Fog(0x7ec8f0, 150, 450);
-  scene.background = sky;
+  const sky = new THREE.Color(0x7ec8f0), fog = new THREE.Fog(0x7ec8f0, FOG_NEAR, FOG_FAR);
   scene.fog = fog;
-  const cams = [0, 1].map(() => new THREE.PerspectiveCamera(70, 1, 0.1, 1000));
-  const renderer = new THREE.WebGLRenderer({antialias: true});
+  const cams = [0, 1].map(() => new THREE.PerspectiveCamera(70, 1, 0.1, CAMERA_FAR));
+  const antialias = !softwareGpu(); // smooth edges on graphics chips; software renderers can't afford it (FR-008)
+  const renderer = new THREE.WebGLRenderer({antialias});
   const isTouch = navigator.maxTouchPoints > 0;
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2)); // tablets: trade a little sharpness for frame rate
   renderer.setSize(innerWidth, innerHeight);
   root.prepend(renderer.domElement);
   addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight), {signal});
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x447733, 0.8); scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffffff, 0.6); sun.position.set(100, 200, 50); scene.add(sun);
+  const view = createView(scene);
+  const probe = detailProbe();
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshLambertMaterial({color: 0x5cb85c}));
-  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const groundSize = 3000;
+  // white vertex colours: the ground shares the road's shader (textured, tinted, shaded) instead of needing its own
+  const groundG = new THREE.PlaneGeometry(groundSize, groundSize);
+  groundG.setAttribute('color', new THREE.Float32BufferAttribute(new Array(groundG.getAttribute('position').count * 3).fill(1), 3));
+  const ground = new THREE.Mesh(groundG, new THREE.MeshLambertMaterial({color: 0x5cb85c, vertexColors: true}));
+  ground.rotation.x = -Math.PI / 2; ground.renderOrder = RENDER_WORLD; scene.add(ground);
 
-  // --- maps: control points (scaled 1.3) + theme. prop() returns the [geometry, material, y] parts of one scenery piece ---
+  // --- maps: control points (scaled 1.3) + theme. prop() returns the [geometry, material, y, y scale] parts of one scenery
+  // piece; all pieces' parts are drawn as one instanced mesh per part (a few draw calls instead of hundreds) ---
   const lam = (color: number) => new THREE.MeshLambertMaterial({color});
   const trunk = new THREE.CylinderGeometry(0.6, 0.8, 3, 6);
   const leafy: Prop[] = [[trunk, lam(0x8b5a2b), 1.5], [new THREE.ConeGeometry(3, 7, 7), lam(0x2e7d32), 6]];
@@ -175,27 +191,28 @@ export function mount(root: HTMLElement): () => void {
     [new THREE.CylinderGeometry(0.7, 0.8, 6, 8), cactusM, 3], [new THREE.BoxGeometry(3.4, 0.8, 0.8), cactusM, 3.2],
     [new THREE.BoxGeometry(0.8, 2.4, 0.8).translate(1.7, 0, 0), cactusM, 4.4], [new THREE.BoxGeometry(0.8, 2.4, 0.8).translate(-1.7, 0, 0), cactusM, 4.4]];
   const pine: Prop[] = [[trunk, lam(0x6b4423), 1.5], [new THREE.ConeGeometry(2.6, 8, 7), lam(0x1f5f3a), 6.5], [new THREE.ConeGeometry(1.4, 3, 7), lam(0xffffff), 9.6]];
-  const neonM = [0xff00cc, 0x00ffff, 0xffee00].map(c => new THREE.MeshLambertMaterial({color: 0x1a1a33, emissive: c, emissiveIntensity: 0.35}));
+  const towerG = new THREE.BoxGeometry(8, 1, 8);
+  const neonM = [0xff00cc, 0x00ffff, 0xffee00].map(c => new THREE.MeshLambertMaterial({color: 0x1a1a33, emissive: c, emissiveIntensity: 0.45}));
   const MAPS: Record<Track, MapDef> = {
     [Track.Meadow]: {
       pts: [[0,0],[80,-10],[150,20],[180,90],[140,150],[60,140],[20,190],[-60,200],[-130,150],[-120,70],[-170,10],[-140,-60],[-60,-50]],
       sky: 0x7ec8f0, ground: 0x5cb85c, road: 0x55555f, curb: [0xdd2222, 0xffffff], wall: [0x2266dd, 0xffffff], light: 0.8,
-      prop: () => leafy,
+      prop: () => leafy, shade: [3, 9],
     },
     [Track.Desert]: {
       pts: [[0,0],[100,0],[170,40],[170,120],[110,150],[60,110],[0,140],[-70,150],[-120,100],[-110,30],[-60,0]],
       sky: 0xf6c28b, ground: 0xe0b872, road: 0x6b5a4a, curb: [0xcc5500, 0xffeecc], wall: [0x8b4513, 0xf4a460], light: 0.9,
-      prop: () => cactus,
+      prop: () => cactus, shade: [1.8, 6],
     },
     [Track.Snow]: {
       pts: [[0,0],[90,0],[140,-40],[200,-10],[190,60],[120,70],[60,100],[80,160],[20,200],[-60,170],[-50,100],[-110,60],[-90,0]],
       sky: 0xcfe3f3, ground: 0xf4f8fb, road: 0x5a6070, curb: [0x3366cc, 0xffffff], wall: [0xcc2222, 0xffffff], light: 0.8,
-      prop: () => pine,
+      prop: () => pine, shade: [2.6, 10],
     },
     [Track.Neon]: {
       pts: [[0,0],[120,0],[120,-60],[200,-60],[200,80],[100,80],[100,160],[-40,160],[-40,80],[-100,80],[-100,0]],
       sky: 0x0b0b2a, ground: 0x1a1a2e, road: 0x2a2a3a, curb: [0xff00cc, 0x00ffff], wall: [0x00ffff, 0xff00cc], light: 0.45, glow: true,
-      prop: () => { const h = 10 + Math.random() * 40; return [[new THREE.BoxGeometry(8, h, 8), neonM[Math.floor(Math.random() * 3)], h / 2]]; },
+      prop: () => { const h = 10 + Math.random() * 40; return [[towerG, neonM[Math.floor(Math.random() * 3)], h / 2, h]]; }, shade: [0, 0], // night: only karts cast shadows (FR-005a)
     },
   };
 
@@ -203,29 +220,52 @@ export function mount(root: HTMLElement): () => void {
   const world = new THREE.Group(); scene.add(world);
   const boxG = new THREE.BoxGeometry(1.8, 1.8, 1.8);
   let P: Vec[] = [], L: Vec[] = [], boxes: { mesh: THREE.Mesh; t: number }[] = [], x0 = 0, x1 = 0, z0 = 0, z1 = 0, sc = 1;
+  let along: number[] = []; // distance along the track to each point (texture coordinates)
   const at = (i: number, o: number, y: number) => P[i].clone().addScaledVector(L[i], o).setY(y);
-  // one quad (6 verts from quad(i, j)) per track segment; glow = unlit so it shines at night
-  function strip(quad: (i: number, j: number) => Vec[], colorFn: (i: number) => number, glow?: boolean) {
-    const pos: number[] = [], col: number[] = [], c = new THREE.Color();
+  // a band along the whole track with cross-section `prof` ([offset, height] points, left to right), one colour per
+  // segment; normals come from the cross-section so rounded kerbs and rails shade smoothly while stripes stay sharp
+  function band(prof: [number, number][], colorFn: (i: number) => number, mat: THREE.Material) {
+    const pos: number[] = [], nor: number[] = [], col: number[] = [], uv: number[] = [], c = new THREE.Color();
+    const normals = prof.map((_, k) => {
+      const [a, b] = [prof[Math.max(0, k - 1)], prof[Math.min(prof.length - 1, k + 1)]], to = b[0] - a[0], ty = b[1] - a[1], l = Math.hypot(to, ty) || 1;
+      return [-ty / l, to / l]; // across, up
+    });
     for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N;
       c.set(colorFn(i));
-      for (const v of quad(i, (i + 1) % N)) { pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); }
+      for (let k = 0; k < prof.length - 1; k++) for (const [s, q] of [[i, k], [j, k], [i, k + 1], [i, k + 1], [j, k], [j, k + 1]]) {
+        const [o, y] = prof[q], [no, ny] = normals[q], v = at(s, o, y), n = L[s].clone().multiplyScalar(no).setY(ny);
+        pos.push(v.x, v.y, v.z); nor.push(n.x, n.y, n.z); col.push(c.r, c.g, c.b);
+        uv.push(q / (prof.length - 1), (s === j && j === 0 ? along[N] : along[s]) / TEX_METRES);
+      }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    g.computeVertexNormals();
-    const opts = {vertexColors: true, side: THREE.DoubleSide};
-    world.add(new THREE.Mesh(g, glow ? new THREE.MeshBasicMaterial(opts) : new THREE.MeshLambertMaterial(opts)));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    const m = new THREE.Mesh(g, mat); world.add(m); return m;
   }
-  const ribbon = (o1: number, o2: number, colorFn: (i: number) => number, y: number, glow?: boolean) =>
-    strip((i, j) => [at(i, o1, y), at(i, o2, y), at(j, o1, y), at(i, o2, y), at(j, o2, y), at(j, o1, y)], colorFn, glow);
+  const hump = (o1: number, o2: number, y: number) => [0, 0.25, 0.5, 0.75, 1].map(t => [o1 + (o2 - o1) * t, y + KERB_RISE * Math.sin(Math.PI * t)] as [number, number]);
+  const RAIL: [number, number][] = [[-0.3, 0.5], [-0.3, 0.95], [-0.25, 1.2], [-0.13, 1.35], [0, 1.4], [0.13, 1.35], [0.25, 1.2], [0.3, 0.95], [0.3, 0.5]];
+  /** Frees the last track's meshes (karts and puddles live outside `world`). */
+  function freeWorld() {
+    world.traverse(o => {
+      if (!(o instanceof THREE.Mesh)) return;
+      if (!sharedGeos.has(o.geometry)) o.geometry.dispose();
+      for (const m of [o.material].flat()) { if (!sharedMats.has(m)) { (m as THREE.MeshLambertMaterial).map?.dispose(); m.dispose(); } }
+    });
+    world.clear();
+  }
+  // what every build reuses: tree, cactus and pine parts, Neon's tower colours and the item box
+  const sharedMats = new Set<THREE.Material>([...neonM, ...[leafy, cactus, pine].flat().map(([, m]) => m), view.edge, view.shadowParts[1]]);
+  const sharedGeos = new Set<THREE.BufferGeometry>([boxG, towerG, view.shadowParts[0], ...[leafy, cactus, pine].flat().map(([g]) => g)]);
+  let trackShadows: THREE.Object3D[] = []; // scenery and barrier shadows (low detail hides them)
 
   function buildTrack() {
-    const map = MAPS[cfg.map];
-    world.clear(); // ponytail: old geometries aren't disposed; fine for a handful of map switches
-    sky.set(map.sky); fog.color.set(map.sky); ground.material.color.set(map.ground);
-    hemi.intensity = map.light; sun.intensity = map.light * 0.75;
+    const map = MAPS[cfg.map], look = TRACK_LOOKS[cfg.map], night = !!map.glow;
+    freeWorld();
+    sky.set(map.sky); fog.color.set(map.sky);
 
     const curve = new THREE.CatmullRomCurve3(map.pts.map(([x, z]) => new THREE.Vector3(x * 1.3, 0, z * 1.3)), true);
     // moving-average passes round off sharp corners so the inner barrier never folds over itself
@@ -234,40 +274,65 @@ export function mount(root: HTMLElement): () => void {
       pts = pts.map((_, i) => { const s = new THREE.Vector3(); for (let d = -8; d <= 8; d++) s.add(pts[(i + d + N) % N]); return s.divideScalar(17); });
     P = new THREE.CatmullRomCurve3(pts, true).getSpacedPoints(N); P.pop();
     L = P.map((p, i) => { const t = P[(i + 1) % N].clone().sub(p).normalize(); return new THREE.Vector3(t.z, 0, -t.x); });
-
-    const curb = (i: number) => map.curb[(i >> 2) % 2];
-    ribbon(-W / 2, W / 2, () => map.road, 0.02);
-    ribbon(W / 2, W / 2 + 2, curb, 0.03, map.glow);
-    ribbon(-W / 2 - 2, -W / 2, curb, 0.03, map.glow);
-    // visible barriers where karts get stopped (see locate)
-    for (const o of [-WALL, WALL])
-      strip((i, j) => [at(i, o, 0), at(i, o, 1.4), at(j, o, 0), at(i, o, 1.4), at(j, o, 1.4), at(j, o, 0)], i => map.wall[(i >> 3) % 2], map.glow);
-
-    // start line + banner
-    const cv = document.createElement('canvas'); cv.width = 64; cv.height = 16;
-    const cx = cv.getContext('2d')!;
-    for (let x = 0; x < 8; x++) for (let y = 0; y < 2; y++) { cx.fillStyle = (x + y) % 2 ? '#fff' : '#111'; cx.fillRect(x * 8, y * 8, 8, 8); }
-    const tex = new THREE.CanvasTexture(cv); tex.magFilter = THREE.NearestFilter;
-    const grp = new THREE.Group();
-    grp.position.copy(P[0]);
-    grp.rotation.y = Math.atan2(P[1].x - P[0].x, P[1].z - P[0].z);
-    const line = new THREE.Mesh(new THREE.PlaneGeometry(W, W / 4), new THREE.MeshBasicMaterial({map: tex}));
-    line.rotation.x = -Math.PI / 2; line.position.y = 0.05; grp.add(line);
-    const postM = lam(0xffcc00);
-    for (const s of [-1, 1]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.8, 8, 0.8), postM); post.position.set(s * (WALL + 0.6), 4, 0); grp.add(post); }
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(2 * WALL + 2, 1.5, 0.6), new THREE.MeshBasicMaterial({map: tex}));
-    bar.position.y = 8; grp.add(bar);
-    world.add(grp);
-
-    // scenery, kept outside the barriers
+    along = [0]; for (let i = 0; i < N; i++) along.push(along[i] + P[i].distanceTo(P[(i + 1) % N]));
     const xs = P.map(p => p.x), zs = P.map(p => p.z);
     [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
     sc = 140 / Math.max(x1 - x0, z1 - z0);
+    // light, sky, scenery rings, start-line props and effects first: the shadows below fall away from its sun
+    const heading = Math.atan2(P[1].x - P[0].x, P[1].z - P[0].z);
+    const centre = new THREE.Vector3((x0 + x1) / 2, 0, (z0 + z1) / 2), radius = Math.hypot(x1 - x0, z1 - z0) / 2 + WALL;
+    view.setTrack(look, {start: P[0].clone(), heading, left: L[0].clone(), wall: WALL, centre, radius}, sky, map.light);
+    trackShadows = [];
+
+    // road and ground textured by the game (FR-003); kerbs and barriers rounded (FR-004); Neon's lines glow (FR-005a)
+    const tex = trackTextures(look, antialias);
+    tex.ground.repeat.setScalar(groundSize / TEX_METRES);
+    const gm = ground.material;
+    gm.map?.dispose(); gm.emissiveMap?.dispose();
+    if (night) { gm.color.set(map.ground); gm.map = null; gm.emissiveMap = tex.ground; gm.emissive.set(0xffffff); gm.emissiveIntensity = 0.55; }
+    else { gm.color.set(map.ground); gm.map = tex.ground; gm.emissiveMap = null; gm.emissive.set(0x000000); }
+    gm.needsUpdate = true;
+    // Lambert (lit per vertex): the track fills most of the screen, and per-pixel shading there costs phones and
+    // software renderers most of their frame rate
+    const lit = (extra: THREE.MeshLambertMaterialParameters = {}) => new THREE.MeshLambertMaterial({vertexColors: true, ...extra});
+    const glowing = () => night ? new THREE.MeshBasicMaterial({vertexColors: true}) : lit({map: tex.road}); // grained like the road: its shader
+    band([[-W / 2, 0.02], [W / 2, 0.02]], () => map.road, lit({map: tex.road}));
+    const curb = (i: number) => map.curb[(i >> 2) % 2];
+    band(hump(W / 2, W / 2 + 2, 0.03), curb, glowing());
+    band(hump(-W / 2 - 2, -W / 2, 0.03), curb, glowing());
+    if (night) band([[-0.15, 0.035], [0.15, 0.035]], i => i % 8 < 4 ? map.curb[1] : map.road, new THREE.MeshBasicMaterial({vertexColors: true})); // lane line
+    // visible barriers where karts get stopped (see locate): a rounded rail on posts
+    const postG = new THREE.CylinderGeometry(0.16, 0.18, 0.9, 8).translate(0, 0.45, 0), postM = night ? new THREE.MeshBasicMaterial({color: map.wall[1]}) : lam(0xd0d4dc);
+    for (const o of [-WALL, WALL]) {
+      band(RAIL.map(([d, y]) => [o + d, y]), i => map.wall[(i >> 3) % 2], glowing());
+      if (!night) trackShadows.push(band([[o - 1.6, 0.03], [o + 1.6, 0.03]], () => 0, view.edge)); // soft shadow at its foot
+      const where = Array.from({length: N / POST_EVERY}, (_, n) => new THREE.Matrix4().makeTranslation(...at(n * POST_EVERY, o, 0).toArray()));
+      world.add(new THREE.Mesh(bake(postG, where), postM));
+    }
+    postG.dispose();
+
+    // start line (the arch, tyre stacks and grandstand beside it are view.ts's start-line props)
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(W, W / 4), new THREE.MeshBasicMaterial({map: chequers(1, 0.25)})); // 8 × 2 squares
+    line.position.copy(P[0]).setY(0.05); line.rotation.set(-Math.PI / 2, heading, 0, 'YXZ'); // turned to the track, then laid flat
+    world.add(line);
+
+    // scenery, kept outside the barriers (the nearest layer; view.ts adds the farther rings)
+    const parts = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; at: THREE.Matrix4[] }>();
+    const shade: [number, number, number, number][] = [];
     for (let n = 0; n < 250; n++) {
       const x = x0 - 80 + Math.random() * (x1 - x0 + 160), z = z0 - 80 + Math.random() * (z1 - z0 + 160);
       if (P.some((p, i) => i % 5 === 0 && (p.x - x) ** 2 + (p.z - z) ** 2 < (WALL + 6) ** 2)) continue;
-      for (const [geo, mat, y] of map.prop()) { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); world.add(o); }
+      if (map.shade[0]) shade.push([x, z, ...map.shade]);
+      for (const [geo, mat, y, sy = 1] of map.prop()) {
+        const key = geo.uuid + mat.uuid, part = parts.get(key) ?? {geo, mat, at: []};
+        part.at.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(1, sy, 1)));
+        parts.set(key, part);
+      }
     }
+    for (const {geo, mat, at: where} of parts.values()) {
+      world.add(new THREE.Mesh(bake(geo, where), mat));
+    }
+    if (shade.length) { const o = view.blobs(shade); world.add(o); trackShadows.push(o); }
 
     // item boxes
     boxes = [];
@@ -277,38 +342,29 @@ export function mount(root: HTMLElement): () => void {
       mesh.position.copy(at(i, o, 1.6));
       world.add(mesh); boxes.push({mesh, t: 0});
     }
+    world.traverse(o => { o.renderOrder = RENDER_WORLD; }); // the world first, then the moving effect, then karts
+    for (const o of trackShadows) o.visible = probe.detail !== Detail.Low; // low detail: no shadows (FR-009)
   }
   buildTrack();
 
   // --- karts: g = position/heading, m = visual body (drift lean, spin-outs), rebuilt on customise ---
-  const dark = new THREE.MeshLambertMaterial({color: 0x222222});
+  // each kart's soft shadow and its driver's, on the ground (in the heading group, so spins and leans don't tip them)
+  const kartShadows = new Map<Kart, [THREE.Mesh, THREE.Mesh]>();
   function buildKart(k: Kart) {
-    const m = k.m, s = STYLES[k.style], [bw, bh, bl] = s.body, r = s.wheel, y = r + 0.2;
-    m.clear();
-    const add = <M extends THREE.Material>(geo: THREE.BufferGeometry, mat: M, x: number, yy: number, z: number) => {
-      const o = new THREE.Mesh(geo, mat); o.position.set(x, yy, z); m.add(o); return o;
-    };
-    const mat = new THREE.MeshLambertMaterial({color: k.color});
-    add(new THREE.BoxGeometry(bw, bh, bl), mat, 0, y, 0);
-    if (k.style !== KartStyle.Buggy) add(new THREE.BoxGeometry(bw + 0.2, 0.2, 0.6), mat, 0, y + 0.8, -bl / 2 + 0.2);
-    if (k.style === KartStyle.Rocket) add(new THREE.ConeGeometry(bh / 2 + 0.1, 1.2, 8).rotateX(Math.PI / 2), mat, 0, y, bl / 2 + 0.6);
-    if (k.style === KartStyle.Buggy) {
-      for (const sx of [-0.8, 0.8]) add(new THREE.BoxGeometry(0.15, 1.6, 0.15), dark, sx, y + 1.2, -0.9);
-      add(new THREE.BoxGeometry(1.75, 0.15, 0.15), dark, 0, y + 2, -0.9);
-    }
-    const wheelG = new THREE.CylinderGeometry(r, r, 0.5, 12).rotateZ(Math.PI / 2);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(wheelG, dark, sx * (bw / 2 + 0.1), r, sz * (bl / 2 - 0.6));
-    const head = add(new THREE.SphereGeometry(0.6, 12, 10), new THREE.MeshLambertMaterial({color: k.skin}), 0, y + 1, -0.3);
-    add(new THREE.SphereGeometry(0.66, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({color: k.helmet}), 0, head.position.y, -0.3);
-    k.spark = add(new THREE.SphereGeometry(0.45, 8, 6), new THREE.MeshBasicMaterial({color: 0xffffff}), 0, 0.4, -bl / 2 - 0.3);
-    k.spark.visible = false;
+    if (k.model) { disposeModel(k.model); k.m.clear(); }
+    k.model = kartModel(k.style, k);
+    k.m.add(k.model.root);
+    k.spark = k.model.spark;
+    if (!kartShadows.has(k)) { const pair: [THREE.Mesh, THREE.Mesh] = [view.blob(), view.blob()]; k.g.add(...pair); kartShadows.set(k, pair); }
+    const [body, head] = kartShadows.get(k)!, [bw, , bl] = SHAPES[k.style].body;
+    body.scale.set(bw + 1, 1, bl + 1.2); head.scale.set(1.3, 1, 1.3);
   }
   // all = every kart we may need (MAX_SLOTS); karts = this race's field: OFFLINE_KARTS, or the room's size online.
   // karts[0] is always player 1; karts[1] is player 2 in 2P mode, otherwise the AI racer Pip
   // (race fields start at zero here and are set properly by reset())
   const all: Kart[] = RACERS.slice(0, MAX_SLOTS).map((r, i) => {
     const k: Kart = {
-      ...r, pn: i, g: new THREE.Group(), m: new THREE.Group(), spark: new THREE.Mesh(undefined, new THREE.MeshBasicMaterial()),
+      ...r, pn: i, g: new THREE.Group(), m: new THREE.Group(), spark: new THREE.Mesh(undefined, new THREE.MeshBasicMaterial()), model: null,
       pos: new THREE.Vector3(), idx: 0, lap: 0, lat: 0, speed: 0, h: 0, camH: 0, boost: 0, spin: 0, drift: 0, charge: 0,
       item: null, itemT: 0, finished: false, finishTime: 0, skill: 1, lane: 0, wrongT: 0, net: null, netAt: 0,
       human: false, remote: false, ai: false,
@@ -818,6 +874,64 @@ export function mount(root: HTMLElement): () => void {
   optRow('cEdit', values(EditTab), tab => { edit = values(EditTab).indexOf(tab); loadInputs(); refreshMenu(); });
   $('go').onclick = startRace;
 
+  // --- the look in motion (specs/010-turbo-3d-look): drivers steer, wheels turn, drifts puff. It reads what the race
+  // worked out and changes nothing in it (FR-010) ---
+  const headings = new Map<Kart, number>(), wheelAt = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  function dress(dt: number) {
+    const bodyOff = view.shadowOffset(KART_SHADOW_H), headOff = view.shadowOffset(HELMET_TOP);
+    for (const k of karts) {
+      const [body, head] = kartShadows.get(k)!; // offsets turned into the kart's own frame (its group turns with it)
+      body.position.copy(bodyOff).applyAxisAngle(UP, -k.h).setY(0.04); head.position.copy(headOff).applyAxisAngle(UP, -k.h).setY(0.045);
+      const m = k.model!, prev = headings.get(k) ?? k.h, turning = steerFrom(prev, k.h, dt);
+      headings.set(k, k.h);
+      // a person at this screen: their keys; anyone else (computer, another screen): read from how the kart turns
+      setSteer(m, k.human && !k.remote && !k.ai ? humanInput(k).steer : turning, dt);
+      spinWheels(m, state === RaceState.Menu ? 0 : k.speed * dt);
+      const drifting = state === RaceState.Race && (k.remote ? k.spark.visible && Math.abs(turning) > PUFF_STEER : !!k.drift);
+      const side = SHAPES[k.style].body[0] / 2 + 0.1; // the rear axle's two wheels
+      if (drifting) for (const sx of [-side, side]) if (Math.random() < PUFF_CHANCE) view.puff(m.wheels[0].localToWorld(wheelAt.set(sx, 0, 0)).setY(0.3));
+    }
+  }
+
+  // low detail: when the race can't keep up (the probe), or asked for by the tests (FR-009)
+  function lowerDetail() {
+    probe.lower();
+    renderer.setPixelRatio(LOW_DETAIL_RATIO);
+    for (const o of [...trackShadows, ...[...kartShadows.values()].flat()]) o.visible = false;
+    view.lowDetail();
+  }
+  // test hooks: low detail now, or full detail kept (the test browsers' software renderers would drop it mid-check)
+  type TestWindow = Window & { __ttLowDetail?: () => void; __ttHoldDetail?: () => void };
+  let holdDetail = false;
+  if (navigator.webdriver) Object.assign(window as TestWindow, {__ttLowDetail: lowerDetail, __ttHoldDetail: () => { holdDetail = true; }});
+
+  // test aids, only under automated test browsers (contracts/ui.md): written when they change
+  const setData = (name: string, value: string) => { if (root.dataset[name] !== value) root.dataset[name] = value; };
+  const shadowAt = new THREE.Vector3();
+  function testInfo(views: Kart[], w: number, h: number) {
+    const me = karts[0].model!, other = karts.find(k => k.remote)?.model;
+    setData('detail', probe.detail);
+    setData('geometries', String(renderer.info.memory.geometries));
+    const held = new Set<THREE.BufferGeometry>(); // what the scene still uses: the renderer may hold no more (FR-012)
+    scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.Points || o instanceof THREE.Line) held.add(o.geometry); });
+    setData('used', String(held.size));
+    setData('antialias', antialias ? 'on' : 'off');
+    setData('steer', me.steer.toFixed(2));
+    setData('steerRemote', other ? other.steer.toFixed(2) : '');
+    setData('wheels', String(Math.floor(me.turns)));
+    setData('spark', karts[0].spark.visible ? '#' + karts[0].spark.material.color.getHexString() : '');
+    setData('kerbs', 'rounded');
+    setData('props', String(view.props));
+    setData('effect', view.effect);
+    setData('puffs', String(view.puffs));
+    setData('layers', view.layers);
+    const screen = (p: Vec, i: number) => { p.project(cams[i]); return `${Math.round(i * w + (p.x + 1) / 2 * w)},${Math.round((1 - p.y) / 2 * h)}`; };
+    setData('shadow', views.map((k, i) => screen(shadowAt.copy(view.shadowPoint(k.pos)), i)).join(';'));
+    const k = views[0], ahead = (k.idx + 6) % N;
+    setData('ground', screen(at(ahead, WALL + 8, 0), 0)); // open ground past the left barrier, a little ahead
+    setData('kart', screen(k.pos.clone().setY(0.8), 0)); // the middle of the first view's kart body
+  }
+
   setField();
   loadInputs();
   refreshMenu();
@@ -825,18 +939,26 @@ export function mount(root: HTMLElement): () => void {
   // a join link connects after the first frame: building the scene can hold the page up for seconds on slow
   // devices, long enough for the join timeout to run out first
   let pendingRoom = linkedRoom;
-  let last = performance.now();
+  let last = performance.now(), shown: RaceState = state;
   renderer.setAnimationLoop(now => {
     const dt = Math.min((now - last) / 1000, 0.05); last = now;
     update(dt); hud();
+    if (state !== shown) headings.clear(); // karts may have jumped to the grid: no turn to read from that
+    if (state === RaceState.Race && shown !== RaceState.Race) probe.restart(); // each race measures the frame rate
+    shown = state;
+    dress(dt);
+    if (!holdDetail && probe.frame(dt, state !== RaceState.Menu)) lowerDetail();
     // split screen: one viewport per human (the garage always uses the full screen)
-    const n = state === RaceState.Menu ? 1 : humans().length, w = innerWidth / n, h = innerHeight;
+    const views = state === RaceState.Menu ? [karts[edit]] : humans(), n = views.length, w = innerWidth / n, h = innerHeight;
     renderer.setScissorTest(n > 1);
+    view.update(dt, h * renderer.getPixelRatio() / 2);
     for (let i = 0; i < n; i++) {
       cams[i].aspect = w / h; cams[i].updateProjectionMatrix();
+      view.around(cams[i], i);
       renderer.setViewport(i * w, 0, w, h); renderer.setScissor(i * w, 0, w, h);
       renderer.render(scene, cams[i]);
     }
+    if (navigator.webdriver) testInfo(views, w, h); // no per-frame cost when people play
     if (pendingRoom) { const room = pendingRoom; pendingRoom = null; lobby.open(room); } // once, even if it throws
   });
 
@@ -844,6 +966,10 @@ export function mount(root: HTMLElement): () => void {
     listening.abort();
     lobby.dispose();
     renderer.setAnimationLoop(null);
+    delete (window as TestWindow).__ttLowDetail; delete (window as TestWindow).__ttHoldDetail;
+    freeWorld(); view.dispose();
+    for (const k of all) if (k.model) disposeModel(k.model);
+    ground.geometry.dispose(); ground.material.map?.dispose(); ground.material.emissiveMap?.dispose(); ground.material.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
     ac?.close();
