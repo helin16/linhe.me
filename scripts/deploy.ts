@@ -88,7 +88,9 @@ const repo = pushedRepo();
 run('yarn', 'install', '--immutable'); // exactly what yarn.lock says
 run('yarn', 'test');
 run('yarn', 'build');
-run('yarn', 'e2e:local'); // browser tests here (Chromium, WebKit); CI runs all three engines
+// `yarn deploy --skip-e2e`: the owner ships despite failing local browser tests (unit tests and the build still run)
+if (process.argv.includes('--skip-e2e')) console.warn('WARNING: --skip-e2e: not running the local browser tests');
+else run('yarn', 'e2e:local'); // browser tests here (Chromium, WebKit); CI runs all three engines
 // `yarn deploy --skip-ci`: the owner ships despite a red or unreadable CI run (local tests still run)
 if (process.argv.includes('--skip-ci')) console.warn('WARNING: --skip-ci: not checking GitHub CI for this commit');
 else await ciPassed(repo, git('rev-parse', 'HEAD'));

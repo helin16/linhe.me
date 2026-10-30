@@ -10,7 +10,7 @@ import {
 } from './constants.ts';
 import { GroundPart, MapId, Material, Phase, Variant } from './enums.ts';
 import { CHUNKS, chunkMesh, dirtyChunks } from './ground.ts';
-import { crateModel, parachuteModel, propModels, setAim, setGear, setWreck, shellModel, tankModel } from './models.ts';
+import { crateModel, parachuteModel, propModels, setAim, setGear, setWreck, shared, shellModel, tankModel } from './models.ts';
 import type { TankLook } from './settings.ts';
 import { activeTank, facing, tiltOf, type Battle } from './sim.ts';
 import { specOf } from './tanks.ts';
@@ -77,7 +77,7 @@ function groundMaterials(): Record<GroundPart, THREE.MeshStandardMaterial> {
     for (let i = 0; i < 14; i++) { const x = rnd() * TEX, y = rnd() * TEX; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 12, y - 5, x + 24, y); c.stroke(); }
   });
   const m = (map: THREE.Texture, roughness: number, extra: THREE.MeshStandardMaterialParameters = {}) =>
-    new THREE.MeshStandardMaterial({ map, roughness, metalness: 0, ...extra });
+    shared(new THREE.MeshStandardMaterial({ map, roughness, metalness: 0, ...extra }));
   return {
     [GroundPart.Soil]: m(soil, 0.95), [GroundPart.Grass]: m(grass, 0.9), [GroundPart.Snow]: m(snow, 0.8),
     [GroundPart.Ice]: m(ice, 0.15, { metalness: 0.1 }), [GroundPart.Wood]: m(wood, 0.8),
@@ -154,7 +154,7 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
   scene.add(sun, sun.target);
   const ground = groundMaterials(), world = new THREE.Group(); scene.add(world);
   const ctx = labels.getContext('2d')!;
-  let lowDetail = false, probeT = 0, probeFrames = 0, probing = false;
+  let lowDetail = false, probeT = 0, probeFrames = 0, probing = false, drewLast = false;
 
   // --- the battle shown: rebuilt when it is a different one ---
   type Shown = {
@@ -164,13 +164,19 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
   };
   let shown: Shown | null = null;
   const cheers: { id: number; at: number }[] = [];
-  const dispose = (o: THREE.Object3D) => o.traverse(x => { if (x instanceof THREE.Mesh || x instanceof THREE.Line) x.geometry.dispose(); });
+  /** Frees an object's geometries and its own materials (shared ones stay for the next battle). */
+  const dispose = (o: THREE.Object3D) => o.traverse(x => {
+    if (!(x instanceof THREE.Mesh || x instanceof THREE.Line)) return;
+    x.geometry.dispose();
+    for (const m of [x.material].flat() as THREE.Material[]) if (!m.userData.shared) m.dispose();
+  });
 
   function show(b: Battle) {
     if (shown?.b === b) return shown;
     if (shown) { dispose(world); world.clear(); }
     cheers.length = 0;
     const map = b.terrain.map, s = SCENES[map];
+    (scene.background as THREE.Texture | null)?.dispose();
     scene.background = skyTexture(s); (scene.fog as THREE.Fog).color.set(s.skyBottom);
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(9, 20), new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.3, depthWrite: false }));
     shadow.rotation.x = -Math.PI / 2; shadow.visible = false;
@@ -357,6 +363,7 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
   const pSun = new THREE.DirectionalLight('#ffffff', 0.8); pSun.position.set(-60, 120, 140); preview.add(pSun);
   const strip = new THREE.Mesh(new THREE.BoxGeometry(400, 10, 60), ground[GroundPart.Grass]); strip.position.y = -5; preview.add(strip);
   previewCam.position.set(0, 26, 150); previewCam.lookAt(0, 14, 0);
+  preview.background = skyTexture(SCENES[MapId.GreenHills]);
   let previewTank: THREE.Group | null = null, previewKey = '';
   function drawPreview(look: Pick<TankLook, 'type' | 'variant' | 'color'>, out: CanvasRenderingContext2D) {
     const key = `${look.type}|${look.variant}|${look.color}`, { width: pw, height: ph } = out.canvas;
@@ -365,7 +372,6 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
       previewTank = tankModel(look.type, look.variant ?? Variant.B, look.color); setAim(previewTank, 35, 0, 1); preview.add(previewTank); previewKey = key;
     }
     const { w, h } = size(), r = renderer.getPixelRatio(), vw = Math.min(pw, w), vh = Math.min(ph, h);
-    preview.background = skyTexture(SCENES[MapId.GreenHills]);
     renderer.setScissorTest(true); renderer.setViewport(0, 0, vw, vh); renderer.setScissor(0, 0, vw, vh);
     renderer.render(preview, previewCam);
     out.clearRect(0, 0, pw, ph);
@@ -383,7 +389,7 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     for (const t of b.tanks) parts.push(r1(t.x), r1(t.y), r1(t.angle), t.alive, t.gone, t.shield, t.powerShell, t.missile, t.gripUntil ?? -1, t.look.color, t.type, t.look.variant ?? '');
     for (const c of b.crates) parts.push(c.id, r1(c.x), r1(c.y), c.falling);
     if (b.shell) parts.push(r1(b.shell.x), r1(b.shell.y));
-    if (b.boom) parts.push(r1(b.boom.t));
+    if (b.boom && b.boom.t < BOOM_S) parts.push(r1(b.boom.t)); // (a blast's clock runs on after it has gone)
     return parts.join(',');
   }
   /** Draws the battle with the view as it is now; `dt` steps splinters and measures the frame rate (FR-013). */
@@ -391,12 +397,15 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     const s = show(b), changed = s.dirty.size > 0;
     rebuildGround(s); syncTanks(s); syncCrates(s); syncShot(s); syncBits(s, dt);
     const key = pictureKey(s);
-    if (changed || key !== lastKey) { renderer.render(scene, camera); lastKey = s.bits.length ? '' : key; } // flying splinters: every frame
+    const drew = changed || key !== lastKey;
+    if (drew) { renderer.render(scene, camera); lastKey = s.bits.length ? '' : key; } // flying splinters: every frame
     drawLabels(b, time);
-    if (probing) {
+    // the frame rate is measured over frames that redrew one after another (idle frames are cheap: they'd hide a slow GPU)
+    if (probing && drew && drewLast) {
       probeT += dt; probeFrames++;
       if (probeT >= DETAIL_PROBE_S) { probing = false; if (probeFrames / probeT < LOW_DETAIL_FPS) lowerDetail(); }
     }
+    drewLast = drew;
   }
   function lowerDetail() {
     lastKey = '';
@@ -407,6 +416,9 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
 
   return {
     render, setView, resize, project, drawPreview, groundChanged,
+    /** Starts showing a battle now, so its starting ground is remembered before anything is carved into it (a rejoin
+     *  carves the blasts so far straight away). */
+    prepare: (b: Battle) => { show(b); },
     /** A heart rises from tank `id` (a repair kit picked up). */
     cheer: (id: number, time: number) => cheers.push({ id, at: time }),
     /** A battle started: measure the frame rate for a moment, then lower the detail if it is slow. */

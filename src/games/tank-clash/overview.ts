@@ -51,7 +51,7 @@ export function createOverview(canvas: HTMLCanvasElement, onLook: (x: number) =>
     draw(b: Battle, view: View, aspect: number) {
       const dpr = Math.min(devicePixelRatio, 2), w = canvas.clientWidth, h = canvas.clientHeight;
       if (!w || !h) return;
-      if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
       if (b.terrain !== terrain || stale) { terrain = b.terrain; stale = false; drawGround(terrain); }
       const kx = w / WORLD_W, ky = h / WORLD_H;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);

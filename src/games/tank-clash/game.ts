@@ -9,7 +9,7 @@ import { createLobby, type LobbyRoom } from '../../shared/online/lobby.ts';
 import { playerName } from '../../shared/online/roster.ts';
 import { GameSlug } from '../index.ts';
 import { botInput, newMemory, type Memory } from './bots.ts';
-import { BIG_COUNT_MS, DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, OVERVIEW_OPACITY, ROOM_SIZES, SETTLE_HOLD_S, STEP_HZ, TANK_COUNTS } from './constants.ts';
+import { BIG_COUNT_MS, DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, OVERVIEW_OPACITY, ROOM_SIZES, SETTLE_HOLD_S, STEP_HZ, TANK_COUNTS, CELL, WORLD_W } from './constants.ts';
 import { clampView, followView, glide, heldView, lookStep, shotView, wholeView, type View } from './camera.ts';
 import { CameraMode, Difficulty, Drop, Hold, MapId, Material, Phase, ResultAction, Screen, Side, TankMsg, TankTab, TankType, Variant } from './enums.ts';
 import { createOverview } from './overview.ts';
@@ -266,6 +266,7 @@ export function mount(root: HTMLElement): () => void {
   function begin(map: PlayableMap) {
     random = seeded(seed);
     b = createBattle(random, map, rowsToEntries(rows));
+    scene.prepare(b); // before a rejoin carves the blasts so far: the starting ground is remembered
     random = gameSetup(location.href, true).random; // after the battle is built, each device's own randomness
     blastLog = []; shotBlasts = []; shotGot = [];
     if (online()) for (const t of b.tanks) { const slot = rows[t.id][1]; if (slot >= 0 && !slots().includes(slot)) t.owner = null; }
@@ -417,7 +418,7 @@ export function mount(root: HTMLElement): () => void {
         cam.mode = CameraMode.Follow;
         target = followView(t, cam.target, a);
       }
-      if (cam.mode === CameraMode.Held && t.driving !== 0) { cam.mode = CameraMode.Follow; target = followView(t, null, a); } // driving ends looking around
+      if (cam.mode === CameraMode.Held && t.driving !== 0 && myTurn()) { cam.mode = CameraMode.Follow; target = followView(t, null, a); } // your driving ends looking around
     }
     cam.target = clampView(target, a);
     cam.view = screen !== Screen.Play || !cam.view ? cam.target : clampView(glide(now, cam.target, frameDt, reduced.matches, track), a);
@@ -431,7 +432,7 @@ export function mount(root: HTMLElement): () => void {
     scene.render(shown, time, frameDt);
     if (screen === Screen.Play) {
       if (cfg.overview) overview.draw(shown, cam.view!, aspect());
-      testInfo(shown);
+      if (navigator.webdriver) testInfo(shown); // only under automated test browsers: no per-frame cost when people play
     }
   }
   /** The ground changed (blasts at these places, or all of it): the 3D ground, the overview map, the test aids. */
@@ -455,11 +456,11 @@ export function mount(root: HTMLElement): () => void {
       materialsKey = '1'; materials = [];
       const runs = new Map<Material, [number, number]>();
       let start = 0, prev: Material | null = null;
-      for (let x = 2; x <= 1602; x += 4) {
-        const m = x < 1600 ? surfaceAt(shown.terrain, x)?.m ?? null : null;
+      for (let x = CELL / 2; x <= WORLD_W + CELL / 2; x += CELL) {
+        const m = x < WORLD_W ? surfaceAt(shown.terrain, x)?.m ?? null : null;
         if (m !== prev) { if (prev !== null && (!runs.has(prev) || x - start > runs.get(prev)![1] - runs.get(prev)![0])) runs.set(prev, [start, x]); start = x; prev = m; }
       }
-      for (const [m, [x0, x1]] of runs) { const x = (x0 + x1 - 4) / 2; materials.push([m, x, surfaceAt(shown.terrain, x)!.y]); }
+      for (const [m, [x0, x1]] of runs) { const x = (x0 + x1 - CELL) / 2; materials.push([m, x, surfaceAt(shown.terrain, x)!.y]); }
     }
     setData('materials', materials.map(([m, x, y]) => `${m}:${at(x, y + 2)}`).join(';'));
   }

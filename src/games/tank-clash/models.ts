@@ -34,9 +34,11 @@ export function cannonOf(type: TankType, variant: Variant) {
 }
 
 const mat = (color: THREE.Color | string, roughness = 0.6, metalness = 0.1) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
-const WRECK = mat('#2b2725', 0.9, 0.3), METAL = mat('#5b5e66', 0.5, 0.4), TRACK = mat('#34343c', 0.85), HUB = mat('#9a9aa6', 0.5, 0.3);
-export const GOLD = new THREE.MeshStandardMaterial({ color: '#ffc928', roughness: 0.3, metalness: 0.8, emissive: '#8a5a00', emissiveIntensity: 0.4 });
-const EDGE = new THREE.MeshStandardMaterial({ color: '#ffd84a', emissive: '#ffb000', emissiveIntensity: 0.6, side: THREE.BackSide });
+/** A material kept for the whole game (shared by every model): never disposed with a model. */
+export const shared = <M extends THREE.Material>(m: M) => { m.userData.shared = true; return m; };
+const WRECK = shared(mat('#2b2725', 0.9, 0.3)), METAL = shared(mat('#5b5e66', 0.5, 0.4)), TRACK = shared(mat('#34343c', 0.85)), HUB = shared(mat('#9a9aa6', 0.5, 0.3));
+export const GOLD = shared(new THREE.MeshStandardMaterial({ color: '#ffc928', roughness: 0.3, metalness: 0.8, emissive: '#8a5a00', emissiveIntensity: 0.4 }));
+const EDGE = shared(new THREE.MeshStandardMaterial({ color: '#ffd84a', emissive: '#ffb000', emissiveIntensity: 0.6, side: THREE.BackSide }));
 
 function extrude(pts: Pt[] | THREE.Shape, depth: number, material: THREE.Material, name: string) {
   const shape = pts instanceof THREE.Shape ? pts : new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
@@ -163,8 +165,8 @@ export function shellModel(missile: boolean) {
 }
 
 // props on the hills behind the field: what stands where (x along the field), per map
-const STONE = mat('#c9bfa8', 0.9), PLANK = mat('#9a6b40', 0.85), BAG = mat('#c6ad63', 0.95), SNOWBAG = mat('#f2f6fb', 0.9), WIRE = mat('#4b4b4b', 0.6);
-const HOLE = mat('#2a2620', 1);
+const STONE = shared(mat('#c9bfa8', 0.9)), PLANK = shared(mat('#9a6b40', 0.85)), BAG = shared(mat('#c6ad63', 0.95)), SNOWBAG = shared(mat('#f2f6fb', 0.9)), WIRE = shared(mat('#4b4b4b', 0.6));
+const HOLE = shared(mat('#2a2620', 1));
 function ruin(wall: THREE.Material) {
   const g = new THREE.Group(); g.name = 'ruin';
   for (const [x, y, w, h] of [[0, 0, 60, 68], [60, 0, 44, 48], [8, 68, 12, 18]]) {
