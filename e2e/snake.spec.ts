@@ -200,10 +200,18 @@ test.describe('US3: play online, 2 to 8 players', () => {
     // the runner (A) hides its tab: B takes over running the arena, and B's own boost now shrinks it
     await a.page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
     await b.page.waitForTimeout(2500); // B has eaten its lead orbs by now
-    const before = Number((await b.page.locator('#len').textContent())!.match(/\d+/)![0]);
+    const before = await lengthOf(b.page), score = await b.page.locator('#score').textContent();
     test.skip(before <= 10, 'B was taken out before the hand-over could be checked'); // rare: a computer snake got B first
-    await b.page.keyboard.down('Space'); await b.page.waitForTimeout(1000); await b.page.keyboard.up('Space');
-    expect(Number((await b.page.locator('#len').textContent())!.match(/\d+/)![0])).toBeLessThan(before);
+    // hold boost until it shows (a busy machine may take a moment to hand the arena over to B); the round must not have
+    // changed meanwhile (same score, no round message), so the drop is boost, not a crash and a fresh round at length 10.
+    // (WebKit draws only the front window: B comes forward so it keeps running.)
+    await b.page.bringToFront();
+    await b.page.keyboard.down('Space');
+    try {
+      await expect.poll(() => lengthOf(b.page), { timeout: 5000 }).toBeLessThan(before);
+      expect(await b.page.locator('#score').textContent()).toBe(score);
+      await expect(b.page.locator('#msg')).toHaveText('', { timeout: 0 });
+    } finally { await b.page.keyboard.up('Space'); }
 
     await a.close(); // only B is left in the room
     await expect(b.page.locator('#endText')).toContainText('Everyone else left', { timeout: 6000 });

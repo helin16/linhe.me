@@ -17,6 +17,10 @@ Zap), computer racers, online play, standings and controls stay exactly as they 
 ### Session 2026-10-30
 
 - Q: Should the trackside get props (tyre stacks, banners, a grandstand)? → A: A few, near the start/finish line only: a start arch with a banner, tyre stacks and a small grandstand; dropped in low detail.
+- Q: How should the Neon track look? → A: Night: dark sky with stars, glowing kerbs, lane lines and barriers on a dark grid, soft coloured lights instead of a strong sun.
+- Q: Should driving get richer effects? → A: Small ones: puffs behind the wheels while drifting (dust on Meadow, sand on Desert, snow on Snow, neon glints on Neon) and drift sparks whose colour shows the drift charge; off in low detail.
+- Q: Should the tracks have moving background details? → A: One light effect per track: falling snow on Snow, drifting dust on Desert, a few birds on Meadow, gently pulsing lights on Neon; off in low detail.
+- Q: Should the drivers move? → A: Simple movement: arms on a small steering wheel that turns with steering, the head leaning into corners.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -40,6 +44,10 @@ changes shape and colours; start a race and check every kart on the track has it
    face show them.
 3. **Given** a race, **When** karts drive, **Then** their wheels turn, and they lean and drift as today, now as solid
    rounded karts.
+4. **Given** a kart steering, **When** it turns left or right, **Then** its driver's steering wheel turns that way and
+   the driver's head leans into the corner (on every screen, online too).
+5. **Given** a kart drifting, **When** the drift builds, **Then** puffs come from behind its wheels in the track's kind
+   (dust, sand, snow or neon glints) and its spark changes colour as today; in low detail there are no puffs.
 
 ---
 
@@ -47,7 +55,8 @@ changes shape and colours; start a race and check every kart on the track has it
 
 Each track has its own look: the road has a tarmac texture (Meadow and Snow), packed sand (Desert) or glowing lanes
 (Neon); the ground beside it is textured grass, sand, snow or a dark grid; kerbs and barriers are rounded and softer;
-one sun casts soft shadows of karts, trees and barriers onto the track.
+one sun casts soft shadows of karts, trees and barriers onto the track (Neon is a night scene lit by soft coloured
+lights: FR-005a).
 
 **Why this priority**: The track fills most of the screen and is flat-coloured today.
 
@@ -57,7 +66,8 @@ textured and karts cast shadows on the road.
 **Acceptance Scenarios**:
 
 1. **Given** each track, **When** a race starts, **Then** its road and ground show their own texture, not flat colour.
-2. **Given** a kart on the road, **When** the sun shines, **Then** it casts a soft shadow under it that moves with it.
+2. **Given** a kart on the road, **When** a race runs, **Then** it casts a soft shadow under it that moves with it
+   (from the sun; on Neon, from the coloured lights).
 3. **Given** the track's edges, **When** I look at them, **Then** kerbs and barriers have rounded, shaded shapes.
 4. **Given** the start/finish line, **When** a race starts, **Then** a start arch with a banner, tyre stacks and a small
    grandstand stand beside it (not in low detail).
@@ -67,24 +77,28 @@ textured and karts cast shadows on the road.
 ### User Story 3 - The scenery has depth (Priority: P2)
 
 Behind the track, each track has layered scenery at different distances — far hills or dunes or mountains, nearer
-hills, trees or cacti or snowy pines or neon towers — a sky that fits the track, and clouds; farther layers are paler.
+hills, trees or cacti or snowy pines or neon towers — a sky that fits the track, with clouds (stars on Neon), and one
+light moving effect (falling snow, drifting dust, a few birds, pulsing lights); farther layers are paler.
 
 **Why this priority**: It completes the look; races play fine without it.
 
 **Independent Test**: On each track, look towards the horizon and check there are several layers, paler with distance,
-and a sky and clouds of the track's own colours.
+and a sky of the track's own colours, with clouds (stars on Neon).
 
 **Acceptance Scenarios**:
 
 1. **Given** each track, **When** I race, **Then** layers of scenery behind the track move at different speeds as the
    view turns (nearer layers faster), the farther ones paler.
+2. **Given** each track, **When** I race, **Then** its moving effect shows (falling snow, drifting dust, a few birds or
+   pulsing lights), always behind the karts and items; in low detail it is gone.
 
 ---
 
 ### User Story 4 - Smooth edges and steady speed on every device (Priority: P1)
 
 Edges look smooth on devices with a graphics chip. On a device that can't keep the race smooth, the game lowers its
-detail by itself (no shadows, a lower drawing resolution, fewer scenery details) instead of slowing down; two players on
+detail by itself (no shadows, a lower drawing resolution, fewer scenery details, no start-line props, drift puffs or moving
+effects) instead of slowing down; two players on
 one screen (split screen) stay smooth too.
 
 **Why this priority**: A more detailed look must not make races choppy, especially on phones and with split screen.
@@ -118,22 +132,38 @@ at today's target; on a slow device the game switches to low detail.
 
 - **FR-001**: Each kart type MUST have its own rounded, solid shape with a seated driver, in the player's kart colour,
   helmet colour and skin; the three types MUST be told apart at a glance.
+- **FR-001a**: Each driver MUST hold a small steering wheel that turns as the kart steers, and lean their head into
+  corners; it shows the steering the race already works out and changes nothing in it. For karts driven on another
+  screen (online), the steering is read from how the kart turns, since online messages carry no steering and stay
+  unchanged (FR-010).
 - **FR-002**: Wheels MUST turn as the kart moves; karts MUST keep today's leaning, drifting and item effects (Turbo
   flames, Goo slowdown, Zap spin) in the new look.
+- **FR-002a**: While a kart drifts, small puffs MUST come from behind its wheels in its track's kind (dust, sand,
+  snow or neon glints), and its drift spark's colour MUST show the drift's charge (growing towards a boost); both are
+  off in low detail. They show the drift that today's rules already work out, and change nothing in it; the spark's
+  charge colours are today's (kept as they are). For karts driven on another screen (online), puffs show while the
+  drift spark those screens already send is on and the kart is turning (a straight boost shows no puffs), and the
+  spark keeps one colour (its charge isn't sent; online messages stay unchanged: FR-010).
 - **FR-003**: Each track's road and ground MUST be textured (tarmac, sand, snow, grass or a neon grid) by the game itself,
   not from image files.
 - **FR-004**: Kerbs and barriers MUST be rounded and shaded, in each track's colours.
 - **FR-004a**: Each track MUST have a few props at its start/finish line — a start arch with a banner, tyre stacks
   and a small grandstand — in the track's colours; scenery only (karts pass through or around them as today's track
   allows: they stand off the road), dropped in low detail.
-- **FR-005**: One sun per track MUST light the scene and cast soft shadows of karts, trees and barriers onto the track.
+- **FR-005**: One sun per track MUST light the scene and cast soft shadows of karts, trees and barriers onto the track;
+  Neon is the exception (FR-005a).
+- **FR-005a**: The Neon track MUST be a night scene: a dark sky with stars, glowing kerbs, lane lines and barriers on a
+  dark grid, lit by soft coloured lights instead of a strong sun; only karts cast (soft) shadows there.
 - **FR-006**: Each track MUST have layered scenery behind it at different distances (paler farther away), its own sky
-  and clouds.
+  and clouds (Neon: a night sky with stars instead of clouds).
+- **FR-006a**: Each track MUST have one light moving effect: falling snow on Snow, drifting dust on Desert, a few
+  birds on Meadow, gently pulsing lights on Neon; it is always drawn behind karts and items (never in front of them) and
+  sparse enough that the road stays visible, and is off in low detail.
 - **FR-007**: The garage MUST show the chosen kart in the new look.
 - **FR-008**: Edges MUST be smoothed on devices with a graphics chip; on software renderers (as in automated test
   browsers) smoothing MAY be off.
 - **FR-009**: When a device can't keep the race smooth, the game MUST lower detail by itself (no shadows, lower drawing
-  resolution, fewer scenery details, no start-line props), for both halves in split screen.
+  resolution, fewer scenery details, no start-line props, no drift puffs, no moving effects), for both halves in split screen.
 - **FR-010**: Race rules, kart handling, collisions, items, computer racers, online messages, standings and controls
   MUST NOT change.
 - **FR-011**: All art MUST be original and toy-like (rounded, bright, soft light; no grime), matching Tank Clash's style.
@@ -142,15 +172,17 @@ at today's target; on a slow device the game switches to low detail.
 ### Key Entities
 
 - **Kart look**: a kart type's shape, the player's kart colour, helmet colour and skin, its wheels and driver.
-- **Track look**: a track's road, ground, kerb and barrier looks, its sun, sky, clouds and scenery layers.
+- **Track look**: a track's road, ground, kerb and barrier looks, its sun (or Neon's coloured lights), sky, clouds or
+  stars, scenery layers, start-line props and its one moving effect.
 - **Detail level**: full or low, chosen per device from how smoothly it draws.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: The race stays as smooth as today with eight karts: the existing frame-rate test still passes, and split
-  screen on a desktop holds at least 50 frames a second.
+- **SC-001**: The race stays as smooth as today with eight karts and every effect on (drift puffs, moving effects,
+  start-line props): the existing frame-rate test still passes, and split screen on a desktop holds at least 50 frames
+  a second.
 - **SC-002**: The same seeded race gives the same finishing order and times before and after the change.
 - **SC-003**: People shown each kart type for 2 seconds name it correctly at least 9 times out of 10 (manual check
   with 5 people).
