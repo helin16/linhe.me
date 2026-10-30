@@ -9,7 +9,7 @@ import { createLobby, type LobbyRoom } from '../../shared/online/lobby.ts';
 import { playerName } from '../../shared/online/roster.ts';
 import { GameSlug } from '../index.ts';
 import { botInput, newMemory, type Memory } from './bots.ts';
-import { BIG_COUNT_MS, DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, OVERVIEW_OPACITY, ROOM_SIZES, SETTLE_HOLD_S, STEP_HZ, TANK_COUNTS, CELL, WORLD_W } from './constants.ts';
+import { BIG_COUNT_MS, DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, POSE_KEEP_S, OVERVIEW_OPACITY, ROOM_SIZES, SETTLE_HOLD_S, STEP_HZ, TANK_COUNTS, CELL, WORLD_W } from './constants.ts';
 import { clampView, followView, glide, heldView, lookStep, shotView, wholeView, type View } from './camera.ts';
 import { CameraMode, Difficulty, Drop, Hold, MapId, Material, Phase, ResultAction, Screen, Side, TankMsg, TankTab, TankType, Variant } from './enums.ts';
 import { createOverview } from './overview.ts';
@@ -135,7 +135,7 @@ export function mount(root: HTMLElement): () => void {
   let net: LobbyRoom<TankLook> | null = null, runner = -1, mySide: Side | undefined;
   let picks = { map: cfg.map, tanks: cfg.tanks, level: cfg.difficulty }; // the host's, as last sent
   let rows: BeginRow[] = [], seed = 0, blastLog: [number, number, number][] = [], shotBlasts: [number, number, number][] = [], shotGot: [number, Drop][] = [];
-  let rejoining = false, poseT = 0, saved = readRejoin();
+  let rejoining = false, poseT = 0, poseKeep = 0, poseStill = true, saved = readRejoin();
   const saveRejoin = (v: { code: string; key: string } | null) => { saved = v && { ...v, at: Date.now() }; writeRejoin(saved); };
   const online = () => mode === PlayerMode.Online && !!net;
   const iRun = () => online() && runner === net!.slot;
@@ -268,7 +268,7 @@ export function mount(root: HTMLElement): () => void {
     b = createBattle(random, map, rowsToEntries(rows));
     scene.prepare(b); // before a rejoin carves the blasts so far: the starting ground is remembered
     random = gameSetup(location.href, true).random; // after the battle is built, each device's own randomness
-    blastLog = []; shotBlasts = []; shotGot = [];
+    blastLog = []; shotBlasts = []; shotGot = []; lastSent.delete(TankMsg.Pose);
     if (online()) for (const t of b.tanks) { const slot = rows[t.id][1]; if (slot >= 0 && !slots().includes(slot)) t.owner = null; }
     if (online() && net && !rejoining) saveRejoin({ code: net.code, key: net.key }); // to come back if we drop
     enterPlay();
@@ -278,7 +278,7 @@ export function mount(root: HTMLElement): () => void {
     if (!b || !turnFits(t, b.tanks.length)) return;
     setTurn(b, t.id, t.left, t.round, t.rest);
     b.tanks[t.id].owner = t.slot < 0 ? null : { slot: t.slot };
-    mem = newMemory(); held.clear();
+    mem = newMemory(); held.clear(); lastSent.delete(TankMsg.Pose); // a new turn's first pose always goes out
   }
   const turnMsg = () => {
     const t = activeTank(b!);
@@ -343,7 +343,14 @@ export function mount(root: HTMLElement): () => void {
     else fireQueued = false;
     if (online() && battle.phase === Phase.Aim && iDrive(t)) {
       if (input.fire) send({t: TankMsg.Fire, id: t.id, x: t.x, angle: t.angle, power: t.power});
-      else if ((poseT += dt) >= 1 / POSE_HZ) { poseT = 0; send({t: TankMsg.Pose, id: t.id, x: t.x, angle: t.angle, power: t.power}); }
+      else if ((poseT += dt) >= 1 / POSE_HZ) { // at most POSE_HZ a second: a burst of identical poses would trip the relay's limit
+        poseT = 0; poseKeep += 1 / POSE_HZ;
+        const pose = {t: TankMsg.Pose, id: t.id, x: t.x, angle: t.angle, power: t.power}, key = JSON.stringify(pose);
+        const changed = key !== lastSent.get(TankMsg.Pose);
+        // sent when it changes, once more as it stops (other screens stop the tank where it stopped, not sliding on), and
+        // every POSE_KEEP_S while it stays still (a rejoined screen, or one that drifted, is put right)
+        if (changed || !poseStill || poseKeep >= POSE_KEEP_S) { poseStill = !changed; poseKeep = 0; lastSent.set(TankMsg.Pose, key); send(pose); }
+      }
     }
     const ev = step(battle, input, dt);
     react(ev);
@@ -365,7 +372,7 @@ export function mount(root: HTMLElement): () => void {
     if (online() && slot !== undefined && slot >= 0) b!.tanks[b!.active].owner = slots().includes(slot) ? { slot } : null;
     if (crate && online()) send({t: TankMsg.Drop, id: crate.id, x: crate.x});
     mem = newMemory();
-    held.clear();
+    held.clear(); lastSent.delete(TankMsg.Pose);
   }
   function react(ev: Events) {
     if (ev.fired) { sound.fire(); fired(); }

@@ -87,6 +87,7 @@ export const ROOM_SIZES = [2, 3, 4, 5, 6, 7, 8, 9, 10];
 export const DEFAULT_ROOM_SIZE = 2;
 export const LOBBY_COUNTDOWN_MS = 60_000;
 export const POSE_HZ = 15;
+export const POSE_KEEP_S = 1;          // an unchanged pose is still sent this often (rejoins and drift get corrected)
 
 // offline replay and test setup (research R12)
 export const SEED_QUERY = 'seed';
