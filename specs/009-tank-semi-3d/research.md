@@ -26,7 +26,13 @@
 
 ## R3. Ground mesh from the breakable grid
 
-- **Decision**: Build the ground from `Terrain.cells` with marching squares per material: the filled
+- **Superseded (2026-10-30, to make surfaces smooth)**: the ground is now traced as closed outlines per piece of
+  ground (marching squares, inside exactly where the cells are), each outline smoothed as a curve (points move towards
+  their neighbours, at most 1 unit), filled with three.js's polygon filler and pushed back for walls with smooth
+  normals; materials are painted by one shader from a mask texture of the cells. The whole ground is rebuilt after a
+  blast (24–62 ms measured in Node on desktop; the frame-rate probe skips that frame); crater backs are filled only
+  where ground was removed. The chunked design below was the first version.
+- **Decision (first version)**: Build the ground from `Terrain.cells` with marching squares per material: the filled
   outline becomes the front face (triangles), and its edges are extruded back along z to make the walls
   and the top strip. The field is split into column chunks of 32 cells (13 chunks); `carve` only
   dirties the chunks it touched, and only those are rebuilt (the existing `groundChanged` hook says when).
@@ -38,6 +44,9 @@
   blast (simple but several ms on phones with big maps; kept as the fallback if chunking proves buggy).
 - **Craters**: the walls made where cells were removed are coloured as the material's inside (darker,
   layered), so holes look cut into the ground (FR-006).
+- **Smoothing** (added 2026-10-30): each corner's value is blended from its neighbouring cells (1 2 1 / 2 4 2 / 1 2 1),
+  and outlines cross where the blend passes a half, so slopes are straight lines, not 4-unit steps; walls get normals
+  averaged at their joints; the grass band is painted by the soil material from each column's untouched surface height.
 
 ## R4. Material looks
 
@@ -105,7 +114,8 @@
 
 ## R10. Speed and detail levels
 
-- **Decision**: Pixel ratio capped at 2 (1.5 on touch, as Turbo Tumble), no antialiasing (in software WebGL it halved the frame rate; measured 2026-10-30). One directional light with a
+- **Decision**: Pixel ratio capped at 2 (1.5 on touch, as Turbo Tumble), antialiasing on a graphics chip (cheap on the tile-based GPUs of iPads and phones; low detail also drops the pixel
+  ratio to 0.75) but not on a software renderer (in software WebGL it halved the frame rate; measured 2026-10-30; the GPU's name is read once, from a throwaway WebGL context). One directional light with a
   1024 shadow map covering the camera's view. After the first 2 seconds of a battle, if the frame rate is
   under 45, switch to low detail: no shadows, fewer particles, pixel ratio 1 (FR-013). Meshes and
   materials are shared per type; geometries are disposed when a battle ends.

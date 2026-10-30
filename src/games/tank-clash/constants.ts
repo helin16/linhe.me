@@ -95,7 +95,6 @@ export const SEED_QUERY = 'seed';
 export const GROUND_DEPTH = 70;        // the ground slab runs this far back into the scene
 export const CAMERA_FOV = 30;          // degrees, vertical: narrow, so shell arcs read as today
 export const CAMERA_TILT_DEG = 6;      // the camera looks down a little, so hill tops show as a strip
-export const CHUNK_CELLS = 32;         // the ground mesh is rebuilt in columns this many cells wide
 export const CLOSE_HALF_W = WORLD_W / 4; // the close view shows half the field's width
 export const FAR_LAYER_Z = -600;       // the far mountains
 export const NEAR_LAYER_Z = -250;      // the near hills with trees and props

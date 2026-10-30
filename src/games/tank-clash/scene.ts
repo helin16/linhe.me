@@ -5,11 +5,11 @@
 // browser (WebGL), so it is covered by the end-to-end tests (constitution VII). Field y points down; three's y up.
 import * as THREE from 'three';
 import {
-  CAMERA_FOV, CAMERA_TILT_DEG, CELL, DETAIL_PROBE_S, FAR_LAYER_Z, GRID_W, GROUND_DEPTH, LOW_DETAIL_FPS, NEAR_LAYER_Z, TANK_H, TANK_W,
+  CAMERA_FOV, CAMERA_TILT_DEG, CELL, DETAIL_PROBE_S, FAR_LAYER_Z, GRID_H, GRID_W, GROUND_DEPTH, LOW_DETAIL_FPS, NEAR_LAYER_Z, TANK_H, TANK_W,
   WORLD_H, WORLD_W,
 } from './constants.ts';
 import { GroundPart, MapId, Material, Phase, Variant } from './enums.ts';
-import { CHUNKS, chunkMesh, dirtyChunks } from './ground.ts';
+import { groundMesh, type Surface } from './ground.ts';
 import { crateModel, parachuteModel, propModels, setAim, setGear, setWreck, shared, shellModel, tankModel } from './models.ts';
 import type { TankLook } from './settings.ts';
 import { activeTank, facing, tiltOf, type Battle } from './sim.ts';
@@ -47,6 +47,89 @@ const dots = (c: CanvasRenderingContext2D, rnd: () => number, n: number, color: 
   c.fillStyle = color;
   for (let i = 0; i < n; i++) { c.beginPath(); c.arc(rnd() * TEX, rnd() * TEX, r * (0.5 + rnd()), 0, Math.PI * 2); c.fill(); }
 };
+// the ground's one material: the outlines' faces painted by what the cells are — earth, snow, ice or wood, blended
+// where they meet (a mask texture of the cells, read smoothly) — and a grass band along untouched earth surfaces: each
+// column's untouched surface height (0: blown open, or not earth) marks GRASS_DEPTH of grass below it on the front,
+// and grass on the top strip; smooth, whatever the cell steps
+const GRASS_DEPTH = 8, HEIGHT_SCALE = 64; // heights are stored ×64 in two bytes
+const WALL_LOOK = 2;                      // a wall takes the look of the cells this far inside it
+function groundShader(maps: Record<GroundPart, THREE.Texture>) {
+  const tops = new Uint8Array(GRID_W * 4), topsTex = new THREE.DataTexture(tops, GRID_W, 1, THREE.RGBAFormat);
+  topsTex.magFilter = topsTex.minFilter = THREE.NearestFilter;
+  const mask = new Uint8Array(GRID_W * GRID_H * 4), maskTex = new THREE.DataTexture(mask, GRID_W, GRID_H, THREE.RGBAFormat);
+  maskTex.magFilter = maskTex.minFilter = THREE.LinearFilter;
+  const material = shared(new THREE.MeshStandardMaterial({ map: maps[GroundPart.Soil], roughness: 0.92, metalness: 0 }));
+  material.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, {
+      grassTops: { value: topsTex }, cellMask: { value: maskTex }, grassMap: { value: maps[GroundPart.Grass] },
+      snowMap: { value: maps[GroundPart.Snow] }, iceMap: { value: maps[GroundPart.Ice] }, woodMap: { value: maps[GroundPart.Wood] },
+    });
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGround, vGroundN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvGroundN = normal;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vGround, vGroundN;
+uniform sampler2D grassTops, cellMask, grassMap, snowMap, iceMap, woodMap;
+float grassTop(float g) {
+  vec4 t = texture2D(grassTops, vec2((clamp(g, 0.0, ${GRID_W - 1}.0) + 0.5) / ${GRID_W}.0, 0.5));
+  return (t.r * 255.0 * 256.0 + t.g * 255.0) / ${HEIGHT_SCALE}.0;
+}`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+vec4 gw;
+{
+  bool front = vGroundN.z > 0.5;
+  vec2 p = vGround.xy - (front ? vec2(0.0) : vGroundN.xy * ${WALL_LOOK}.0); // walls: the cells just inside them
+  gw = smoothstep(0.2, 0.8, texture2D(cellMask, p / vec2(${WORLD_W}.0, ${WORLD_H}.0)));
+  float sum = gw.r + gw.g + gw.b + gw.a;
+  gw = sum < 0.01 ? vec4(1.0, 0.0, 0.0, 0.0) : gw / sum; // r earth, g snow, b ice, a wood
+  vec3 c = diffuseColor.rgb * gw.r + mapTexelToLinear(texture2D(snowMap, vUv)).rgb * gw.g
+    + mapTexelToLinear(texture2D(iceMap, vUv)).rgb * gw.b + mapTexelToLinear(texture2D(woodMap, vUv)).rgb * gw.a;
+  float gx = vGround.x / ${CELL}.0 - 0.5, g0 = floor(gx), a = grassTop(g0), b = grassTop(g0 + 1.0);
+  // between neighbouring columns the band follows the slope; at a cliff (a big step) it keeps to each column's own top
+  float top = abs(a - b) > ${GRASS_DEPTH}.0 ? (gx - g0 < 0.5 ? a : b) : mix(a, b, gx - g0), untouched = step(1.0, min(a, b));
+  float band = front
+    ? smoothstep(top - ${GRASS_DEPTH + 1}.0, top - ${GRASS_DEPTH - 1}.0, vGround.y) * step(vGround.y, top + 2.0) * step(0.0, vGround.z)
+    : smoothstep(0.3, 0.6, vGroundN.y) * step(abs(vGround.y - top), ${GRASS_DEPTH}.0); // the top strip, facing up
+  diffuseColor.rgb = mix(c, mapTexelToLinear(texture2D(grassMap, vUv)).rgb, band * untouched * gw.r);
+}`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.15, gw.b); // ice is glossy');
+  };
+  const MASK: Partial<Record<number, number>> = { [Material.Earth]: 0, [Material.Snow]: 1, [Material.Ice]: 2, [Material.Wood]: 3 };
+  /** Rereads the cells (the mask) and the untouched surface heights (`startTops`, from surfaceTops, as the battle began). */
+  const update = (cells: Uint8Array, startTops: Int16Array) => {
+    const now = surfaceTops(cells);
+    for (let gx = 0; gx < GRID_W; gx++) {
+      const h = now[gx] >= 0 && now[gx] === startTops[gx] ? (WORLD_H - now[gx] * CELL) * HEIGHT_SCALE : 0;
+      tops[gx * 4] = h >> 8; tops[gx * 4 + 1] = h & 255;
+    }
+    mask.fill(0);
+    for (let gy = 0; gy < GRID_H; gy++) for (let gx = 0; gx < GRID_W; gx++) { // texture rows go up; the grid's go down
+      const ch = MASK[cells[gy * GRID_W + gx]];
+      if (ch !== undefined) mask[((GRID_H - 1 - gy) * GRID_W + gx) * 4 + ch] = 255;
+    }
+    topsTex.needsUpdate = maskTex.needsUpdate = true;
+  };
+  return { material, update, dispose: () => { material.dispose(); topsTex.dispose(); maskTex.dispose(); } };
+}
+/** Each column's grass surface: its highest ground, looking under bridges (wood with air below), if that is earth
+ *  with air above; else −1 (snow, ice or a cave under them get none). */
+function surfaceTops(cells: Uint8Array) {
+  const out = new Int16Array(GRID_W).fill(-1);
+  for (let gx = 0; gx < GRID_W; gx++) {
+    let gy = 0;
+    const m = () => cells[gy * GRID_W + gx];
+    for (;;) {
+      while (gy < GRID_H && m() === Material.Air) gy++;
+      if (gy >= GRID_H || m() !== Material.Wood) break;
+      while (gy < GRID_H && m() === Material.Wood) gy++; // a bridge: look under it
+      if (gy < GRID_H && m() !== Material.Air) { gy = GRID_H; break; } // wood resting on ground: no surface under it
+    }
+    if (gy < GRID_H && m() === Material.Earth) out[gx] = gy;
+  }
+  return out;
+}
+
 function groundMaterials(): Record<GroundPart, THREE.MeshStandardMaterial> {
   const soil = texture((c, rnd) => {
     ['#8a5a34', '#7b4f2d', '#8f603a', '#6e4628'].forEach((col, i) => { c.fillStyle = col; c.fillRect(0, i * TEX / 4, TEX, TEX / 4); });
@@ -136,11 +219,19 @@ function skyTexture(s: Look) {
   return new THREE.CanvasTexture(cv);
 }
 
+/** Is WebGL drawn by the processor (a software renderer, as in headless test browsers)? Antialiasing there halves the
+ *  frame rate (research R10); on a graphics chip it is cheap and smooths every edge. */
+function softwareGpu() {
+  const gl = document.createElement('canvas').getContext('webgl'), info = gl?.getExtension('WEBGL_debug_renderer_info');
+  const name = gl && info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
+  gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  return !gl || /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+}
+
 /** The scene for one canvas, with a flat layer (`labels`) over it. */
 export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement) {
   const touch = navigator.maxTouchPoints > 0;
-  // no antialiasing: it costs too much on slower GPUs, and high-density screens hide the edges anyway (research R10)
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softwareGpu() });
   let ratio = Math.min(devicePixelRatio, touch ? 1.5 : 2); // tablets: trade a little sharpness for frame rate
   renderer.setPixelRatio(ratio);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -153,12 +244,13 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
   Object.assign(sun.shadow.camera, { left: -1100, right: 1100, top: 900, bottom: -900, near: 100, far: 3000 });
   scene.add(sun, sun.target);
   const ground = groundMaterials(), world = new THREE.Group(); scene.add(world);
+  const painted = groundShader(Object.fromEntries(Object.entries(ground).map(([k, m]) => [k, m.map!])) as Record<GroundPart, THREE.Texture>);
   const ctx = labels.getContext('2d')!;
   let lowDetail = false, probeT = 0, probeFrames = 0, probing = false, drewLast = false;
 
   // --- the battle shown: rebuilt when it is a different one ---
   type Shown = {
-    b: Battle; original: Uint8Array; seen: Uint8Array; chunks: (THREE.Group | null)[]; dirty: Set<number>; edges: THREE.Group;
+    b: Battle; original: Uint8Array; startTops: Int16Array; seen: Uint8Array; ground: THREE.Group; stale: boolean; edges: THREE.Group;
     tanks: Map<number, THREE.Group>; crates: Map<number, THREE.Group>; shell: THREE.Object3D | null; shellKind: boolean | null;
     shadow: THREE.Mesh; trail: THREE.Line; boom: THREE.Group; bits: { m: THREE.Mesh; v: THREE.Vector3; t: number }[]; scenery: THREE.Group;
   };
@@ -187,17 +279,16 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     boom.add(flash, core);
     for (let i = 0; i < 8; i++) boom.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), new THREE.MeshStandardMaterial({ color: '#504646', transparent: true, roughness: 1 })));
     const sc = scenery(map);
-    shown = { b, original: b.terrain.cells.slice(), seen: b.terrain.cells.slice(), chunks: Array(CHUNKS).fill(null), dirty: new Set(Array.from({ length: CHUNKS }, (_, i) => i)),
+    shown = { b, original: b.terrain.cells.slice(), startTops: surfaceTops(b.terrain.cells), seen: b.terrain.cells.slice(), ground: new THREE.Group(), stale: true,
       edges: new THREE.Group(), tanks: new Map(), crates: new Map(), shell: null, shellKind: null, shadow, trail, boom, bits: [], scenery: sc };
-    world.add(sc, shown.edges, shadow, trail, boom);
+    world.add(sc, shown.ground, shown.edges, shadow, trail, boom);
     return shown;
   }
 
-  /** The ground changed: rebuild the chunks these blasts reach (all of it if none are given); wood that broke splinters. */
-  function groundChanged(t: Terrain, blasts?: [number, number, number][]) {
+  /** The ground changed: it is rebuilt before the next picture; wood that broke splinters. */
+  function groundChanged(t: Terrain) {
     if (!shown || shown.b.terrain !== t) return;
-    if (!blasts) for (let i = 0; i < CHUNKS; i++) shown.dirty.add(i);
-    else for (const [x, , r] of blasts) for (const c of dirtyChunks(x, r)) shown.dirty.add(c);
+    shown.stale = true;
     let n = 0; // splinters where wood was and isn't any more
     for (let i = 0; i < t.cells.length && n < SPLINTERS * (lowDetail ? 0.5 : 1); i++) {
       if (shown.seen[i] !== Material.Wood || t.cells[i] !== Material.Air || (i * 7) % 5) continue;
@@ -208,30 +299,31 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     shown.seen.set(t.cells);
   }
 
+  /** Rebuilds the ground's meshes from the cells (the solid ground in its painted material, crater backs, water). */
   function rebuildGround(s: Shown) {
-    for (const i of s.dirty) {
-      const old = s.chunks[i];
-      if (old) { dispose(old); world.remove(old); }
-      const g = new THREE.Group(), mesh = chunkMesh(s.b.terrain.cells, s.original, i);
-      for (const [part, data] of Object.entries(mesh) as [GroundPart, NonNullable<(typeof mesh)[GroundPart]>][]) {
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
-        geo.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
-        geo.setAttribute('uv', new THREE.Float32BufferAttribute(data.uvs, 2));
-        const m = new THREE.Mesh(geo, ground[part]); m.receiveShadow = true; m.castShadow = part !== GroundPart.Water; g.add(m);
-      }
-      s.chunks[i] = g; world.add(g);
-    }
-    if (s.dirty.size) edges(s);
-    s.dirty.clear();
+    if (!s.stale) return;
+    dispose(s.ground); s.ground.clear();
+    const mesh = groundMesh(s.b.terrain.cells, s.original);
+    const add = (data: Surface, material: THREE.Material, shadows: boolean) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(data.uvs, 2));
+      const m = new THREE.Mesh(geo, material); m.receiveShadow = true; m.castShadow = shadows; s.ground.add(m);
+    };
+    add(mesh.solid, painted.material, true); add(mesh.back, ground[GroundPart.Soil], false); add(mesh.water, ground[GroundPart.Water], false);
+    painted.update(s.b.terrain.cells, s.startTops);
+    edges(s);
+    s.stale = false;
   }
   /** The ground carrying on past the field's sides (at its edges' height) and below it, so the screen is filled. */
   function edges(s: Shown) {
     dispose(s.edges); s.edges.clear();
-    for (const [x0, x1, edgeX] of [[-EDGE_REACH, 0, CELL / 2], [WORLD_W, WORLD_W + EDGE_REACH, WORLD_W - CELL / 2]]) {
+    // each side overlaps the field by a cell, covering the field's rounded top corners
+    for (const [x0, x1, edgeX] of [[-EDGE_REACH, CELL, CELL / 2], [WORLD_W - CELL, WORLD_W + EDGE_REACH, WORLD_W - CELL / 2]]) {
       const g = groundBelow(s.b.terrain, edgeX, 0), top = y3(g ? g.y : WORLD_H);
       const part = !g || g.m === Material.Earth ? GroundPart.Grass : g.m === Material.Water ? GroundPart.Water : g.m === Material.Snow ? GroundPart.Snow : GroundPart.Soil;
-      const body = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, top + 600, GROUND_DEPTH), ground[GroundPart.Soil]);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, top + 600, GROUND_DEPTH + 0.2), ground[GroundPart.Soil]); // just in front of the field's
       body.position.set((x0 + x1) / 2, (top - 600) / 2, 0); body.receiveShadow = true;
       const cap = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4, GROUND_DEPTH + 0.5), ground[part]); cap.position.set((x0 + x1) / 2, top - 2, 0);
       s.edges.add(body, cap);
@@ -394,10 +486,11 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
   }
   /** Draws the battle with the view as it is now; `dt` steps splinters and measures the frame rate (FR-013). */
   function render(b: Battle, time: number, dt: number) {
-    const s = show(b), changed = s.dirty.size > 0;
+    const s = show(b), changed = s.stale;
     rebuildGround(s); syncTanks(s); syncCrates(s); syncShot(s); syncBits(s, dt);
     const key = pictureKey(s);
     const drew = changed || key !== lastKey;
+    if (changed) drewLast = false; // a ground rebuild's slow frame says nothing about the GPU: the probe skips it
     if (drew) { renderer.render(scene, camera); lastKey = s.bits.length ? '' : key; } // flying splinters: every frame
     drawLabels(b, time);
     // the frame rate is measured over frames that redrew one after another (idle frames are cheap: they'd hide a slow GPU)
@@ -425,6 +518,6 @@ export function createScene(canvas: HTMLCanvasElement, labels: HTMLCanvasElement
     probe: () => { probing = !lowDetail; probeT = 0; probeFrames = 0; },
     /** 'probing' while the frame rate is being measured, then 'low' or 'full'. */
     get detail() { return probing ? 'probing' : lowDetail ? 'low' : 'full'; },
-    dispose: () => { dispose(scene); dispose(preview); renderer.dispose(); },
+    dispose: () => { dispose(scene); dispose(preview); painted.dispose(); renderer.dispose(); },
   };
 }

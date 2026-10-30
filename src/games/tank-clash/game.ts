@@ -437,7 +437,7 @@ export function mount(root: HTMLElement): () => void {
   }
   /** The ground changed (blasts at these places, or all of it): the 3D ground, the overview map, the test aids. */
   function groundChanged(t: Terrain, blasts?: [number, number, number][]) {
-    scene.groundChanged(t, blasts); overview.groundChanged(); materialsKey = '';
+    scene.groundChanged(t); overview.groundChanged(); materialsKey = '';
     if (blasts?.length) lastBlast = blasts[blasts.length - 1];
   }
   // read-only aids for the end-to-end tests (contracts/ui.md): written only when they change
