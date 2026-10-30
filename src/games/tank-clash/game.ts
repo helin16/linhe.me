@@ -1,6 +1,7 @@
 // Tank Clash (specs/007-tank-artillery): the garage, the battle loop, input, the HUD and the life panel, offline and
-// online. The rules live in sim.ts, computer tanks in bots.ts, drawing in draw.ts, sounds in sound.ts, online messages
-// in messages.ts; mount() renders into `root` and returns a cleanup that leaves the page as it was.
+// online. The rules live in sim.ts, computer tanks in bots.ts, the 3D view in scene.ts, the camera in camera.ts, the
+// overview map in overview.ts (specs/008, 009), sounds in sound.ts, online messages in messages.ts; mount() renders
+// into `root` and returns a cleanup that leaves the page as it was.
 import { values } from '../../shared/enum.ts';
 import { PlayerMode } from '../../shared/modes.ts';
 import { NetText } from '../../shared/online/client.ts';
@@ -8,9 +9,11 @@ import { createLobby, type LobbyRoom } from '../../shared/online/lobby.ts';
 import { playerName } from '../../shared/online/roster.ts';
 import { GameSlug } from '../index.ts';
 import { botInput, newMemory, type Memory } from './bots.ts';
-import { BIG_COUNT_MS, DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, ROOM_SIZES, STEP_HZ, TANK_COUNTS } from './constants.ts';
-import { Difficulty, Drop, Hold, MapId, Phase, ResultAction, Screen, Side, Style, TankMsg, TankTab, TankType, Variant } from './enums.ts';
-import { BONUS_ICON, cheer, drawBattle, drawPreview, groundChanged } from './draw.ts';
+import { BIG_COUNT_MS, DEFAULT_ROOM_SIZE, LOBBY_COUNTDOWN_MS, POSE_HZ, OVERVIEW_OPACITY, ROOM_SIZES, SETTLE_HOLD_S, STEP_HZ, TANK_COUNTS } from './constants.ts';
+import { clampView, followView, glide, heldView, lookStep, shotView, wholeView, type View } from './camera.ts';
+import { CameraMode, Difficulty, Drop, Hold, MapId, Material, Phase, ResultAction, Screen, Side, TankMsg, TankTab, TankType, Variant } from './enums.ts';
+import { createOverview } from './overview.ts';
+import { createScene } from './scene.ts';
 import {
   allowedFrom, applySettle, BLAST_CHUNK, beginRows, encodeSettle, nextRunner, parseMessage, randomSide, roomEntries,
   rowsToEntries, sideFree, tanksFor, turnFits, type BeginRow, type Msg, type TurnInfo,
@@ -23,11 +26,14 @@ import {
   type Events, type Input, type Owner, type Tank,
 } from './sim.ts';
 import { clampAngle, clampPower, specOf, tenths } from './tanks.ts';
-import { carve, PLAYABLE_MAPS, type PlayableMap } from './terrain.ts';
+import { carve, PLAYABLE_MAPS, surfaceAt, type PlayableMap, type Terrain } from './terrain.ts';
 
 const MARKUP = `
 <canvas id="view"></canvas>
+<canvas id="labels" aria-hidden="true"></canvas>
 <div id="hud">
+  <div id="mapBox"><canvas id="overview" role="img" aria-label="Overview map"></canvas>
+    <button id="overviewToggle" aria-pressed="false">Hide map</button></div>
   <div id="bar"><div id="whoseTurn" role="status"></div><div id="timer" role="timer"></div>
     <button id="mute" aria-label="Sound on or off"></button></div>
   <button id="panelToggle" aria-label="Show or hide the tank list" aria-expanded="true">Tanks</button>
@@ -43,7 +49,6 @@ const MARKUP = `
 </div>
 <div id="setup">
   <h1>Tank Clash</h1>
-  <div id="styleRow">Style<br><span id="cStyle"></span></div>
   <div>Players<br><span id="cPlayers"></span></div>
   <div id="editRow">Customise<br><span id="cEdit"></span></div>
   <label>Name <input type="text" id="cName" maxlength="10"></label>
@@ -73,13 +78,16 @@ const SIDE_WAIT_MS = 1500;  // a joiner picks a side by then even if someone has
 const REJOIN_KEY = 'tc-rejoin';
 const REJOIN_MS = 10 * 60_000; // a saved rejoin key is offered this long (a battle that long is still on, most likely)
 const BOT_COLORS = ['#8e8e93', '#ff9800', '#9c27b0', '#00bcd4', '#795548', '#cddc39', '#3f51b5', '#ff5722'];
-const KEY_HELP = '←/→ drive · ↑/↓ aim · Q/E power · Space fire';
+const KEY_HELP = '←/→ drive · ↑/↓ aim · Q/E power · Space fire · [/] look around · F follow';
 // driving keys are held; aiming keys move the cannon or power by exactly 1 per press (the keyboard repeats while held)
 const HELD_KEYS: Record<string, Hold> = { ArrowLeft: Hold.DriveLeft, ArrowRight: Hold.DriveRight };
 const NUDGE_KEYS: Record<string, [aim: number, power: number]> = {
   ArrowUp: [1, 0], ArrowDown: [-1, 0], KeyE: [0, 1], Equal: [0, 1], NumpadAdd: [0, 1], KeyQ: [0, -1], Minus: [0, -1], NumpadSubtract: [0, -1],
 };
 const FIRE_KEY = 'Space';
+const LOOK_KEYS: Record<string, number> = { BracketLeft: -1, BracketRight: 1 }, FOLLOW_KEY = 'KeyF';
+/** Icons for bonuses a tank holds, for the life panel. */
+const BONUS_ICON: Record<Drop, string> = { [Drop.Repair]: '🔧', [Drop.Power]: '💥', [Drop.GripGear]: '⛓️', [Drop.Shield]: '🛡️', [Drop.Missile]: '🚀' };
 const MODES = [PlayerMode.One, PlayerMode.Two, PlayerMode.Online];
 
 type Saved = { code: string; key: string; at: number };
@@ -105,8 +113,7 @@ export function mount(root: HTMLElement): () => void {
 
   const cfg = loadSaved();
   const save = () => saveSettings(cfg);
-  const sound = createSound(cfg.muted, cfg.style);
-  root.classList.toggle(Style.Arcade, cfg.style === Style.Arcade); // the CSS class is the style's name
+  const sound = createSound(cfg.muted);
   let mode: PlayerMode = PlayerMode.One, edit = 0, screen: Screen = Screen.Garage;
 
   // --- the battle ---
@@ -213,7 +220,7 @@ export function mount(root: HTMLElement): () => void {
       if (m.first) { seed = m.seed; rows = m.tanks; begin(m.map); takeTurn(m.turn); if (!m.turn.aim) b!.phase = Phase.Settle; }
       for (const [x, y, r] of m.blasts) carve(b!.terrain, x, y, r);
       blastLog.push(...m.blasts);
-      groundChanged(b!.terrain);
+      groundChanged(b!.terrain, m.blasts);
     }
     if (!b) return;
     if (m.t === TankMsg.Turn) { takeTurn(m); rejoining = false; }
@@ -224,13 +231,13 @@ export function mount(root: HTMLElement): () => void {
     }
     if (m.t === TankMsg.Fire && m.id === b.active && b.phase === Phase.Aim) {
       setPose(b, m.id, m.x, m.angle, m.power);
-      fire(b); sound.fire();
+      fire(b); sound.fire(); fired();
     }
     if (m.t === TankMsg.Settle && !iRun()) {
       for (const [x, y, r] of m.blasts) carve(b.terrain, x, y, r);
       blastLog.push(...m.blasts);
       applySettle(b, m);
-      groundChanged(b.terrain);
+      groundChanged(b.terrain, m.blasts);
       gotten(m.got);
     }
     if (m.t === TankMsg.Drop && !iRun()) addCrate(b, m.id, m.x, null);
@@ -303,6 +310,8 @@ export function mount(root: HTMLElement): () => void {
       t.angle = clampAngle(t.look, Math.round(t.angle) + a); t.power = clampPower(t.look, Math.round(t.power) + p);
     }
     if (e.code === FIRE_KEY && !e.repeat) fireQueued = true;
+    if (e.code in LOOK_KEYS && b && screen === Screen.Play) { e.preventDefault(); look(lookStep(cam.target ?? cam.view!, LOOK_KEYS[e.code], aspect())); }
+    if (e.code === FOLLOW_KEY && b && screen === Screen.Play) { cam.mode = CameraMode.Follow; cam.target = null; cam.holdUntil = 0; }
   }, {signal});
   addEventListener('keyup', e => { if (e.code in HELD_KEYS) held.delete(HELD_KEYS[e.code]); }, {signal});
   addEventListener('blur', () => held.clear(), {signal});
@@ -358,28 +367,101 @@ export function mount(root: HTMLElement): () => void {
     held.clear();
   }
   function react(ev: Events) {
-    if (ev.fired) sound.fire();
+    if (ev.fired) { sound.fire(); fired(); }
     // a tank destroyed by the blast (not by a fall) gets the bigger explosion instead of the plain one
     const killed = ev.destroyed.some(id => !b!.tanks[id].doomed && !b!.tanks[id].gone);
     if (killed) sound.destroyed(); else for (const [, , r] of ev.blasts) sound.boom(r);
-    if (ev.blasts.length) groundChanged(b!.terrain);
+    if (ev.blasts.length) groundChanged(b!.terrain, ev.blasts);
     for (const _ of ev.landed) sound.crateLand();
     gotten(ev.got);
   }
   function gotten(got: [number, Drop][]) {
     if (got.length) flash(got.map(([, d]) => `${d}!`).join(' '));
-    for (const [id, d] of got) if (d === Drop.Repair) cheer(b!, id, time); // a heart rises from the tank
+    for (const [id, d] of got) if (d === Drop.Repair) scene.cheer(id, time); // a heart rises from the tank
   }
   let flashText = '', flashT = 0;
   const flash = (text: string) => { flashText = text; flashT = 2; };
 
-  const view = $<HTMLCanvasElement>('view'), ctx = view.getContext('2d')!;
-  let acc = 0, last = performance.now(), frame = 0, time = 0;
+  // --- the 3D view, the camera (specs/008, 009) and the overview map ---
+  const view = $<HTMLCanvasElement>('view');
+  const scene = createScene(view, $<HTMLCanvasElement>('labels'));
+  $('overview').style.opacity = String(OVERVIEW_OPACITY); // see-through: the battle shows behind it
+  const overview = createOverview($<HTMLCanvasElement>('overview'), x => look(heldView(x, cam.target ?? cam.view!, aspect())));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  let acc = 0, last = performance.now(), frame = 0, time = 0, frameDt = 0, viewW = 0, viewH = 0;
+  const aspect = () => (view.clientWidth || 1) / (view.clientHeight || 1);
+  /** The camera, on this screen only: what it is doing, where it is and where it glides to (data-model.md). */
+  const cam = { mode: CameraMode.Whole as CameraMode, view: null as View | null, target: null as View | null, turn: '', holdUntil: 0, shot: false };
+  /** A player looked around (overview map, [ or ]): hold the view there. */
+  function look(v: View) { if (!b || screen !== Screen.Play) return; cam.mode = CameraMode.Held; cam.target = v; }
+  /** A shot was fired: the camera frames it (even if a player had moved the view). */
+  function fired() { cam.mode = CameraMode.Shot; }
+  function aimCamera(shown: Battle) {
+    const a = aspect(), now = cam.view ?? wholeView(a);
+    let target = cam.target ?? now, track = false;
+    if (screen !== Screen.Play || shown.phase === Phase.Over) { cam.mode = CameraMode.Whole; target = wholeView(a); }
+    else {
+      const t = activeTank(shown), turn = `${shown.round}|${shown.active}`;
+      if (turn !== cam.turn) { // a new turn: once the last shot's blast has been held a moment, follow the next tank
+        cam.holdUntil = cam.shot ? time + SETTLE_HOLD_S : 0;
+        cam.turn = turn; cam.mode = CameraMode.Follow; cam.target = null; cam.shot = false;
+      }
+      if (shown.phase !== Phase.Aim) cam.shot = true;
+      if (cam.mode === CameraMode.Held) track = true;
+      else if (shown.shell) { cam.mode = CameraMode.Shot; target = shotView(shown.tanks[shown.shell.from], shown.shell, target, a); track = true; }
+      else if (shown.phase === Phase.Settle || time < cam.holdUntil) { // the blast stays on screen; falling tanks are kept in view
+        for (const f of shown.tanks) if (f.falling && !f.gone) target = shotView({ x: target.cx, y: target.cy }, f, target, a);
+        track = true;
+      } else {
+        if (cam.mode === CameraMode.Shot) cam.target = null;
+        cam.mode = CameraMode.Follow;
+        target = followView(t, cam.target, a);
+      }
+      if (cam.mode === CameraMode.Held && t.driving !== 0) { cam.mode = CameraMode.Follow; target = followView(t, null, a); } // driving ends looking around
+    }
+    cam.target = clampView(target, a);
+    cam.view = screen !== Screen.Play || !cam.view ? cam.target : clampView(glide(now, cam.target, frameDt, reduced.matches, track), a);
+  }
   function draw() {
-    const dpr = Math.min(devicePixelRatio, 2), w = Math.round(view.clientWidth * dpr), h = Math.round(view.clientHeight * dpr);
-    if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
+    if (view.clientWidth !== viewW || view.clientHeight !== viewH) { viewW = view.clientWidth; viewH = view.clientHeight; scene.resize(); }
     const shown = screen === Screen.Garage ? garageView() : b; // the garage previews the chosen map and tanks
-    if (shown) drawBattle(ctx, w, h, shown, time, cfg.style);
+    if (!shown) return;
+    aimCamera(shown);
+    scene.setView(cam.view!);
+    scene.render(shown, time, frameDt);
+    if (screen === Screen.Play) {
+      if (cfg.overview) overview.draw(shown, cam.view!, aspect());
+      testInfo(shown);
+    }
+  }
+  /** The ground changed (blasts at these places, or all of it): the 3D ground, the overview map, the test aids. */
+  function groundChanged(t: Terrain, blasts?: [number, number, number][]) {
+    scene.groundChanged(t, blasts); overview.groundChanged(); materialsKey = '';
+    if (blasts?.length) lastBlast = blasts[blasts.length - 1];
+  }
+  // read-only aids for the end-to-end tests (contracts/ui.md): written only when they change
+  let lastBlast: [number, number, number] | null = null, materialsKey = '', materials: [Material, number, number][] = [];
+  const setData = (name: string, value: string) => { if (root.dataset[name] !== value) root.dataset[name] = value; };
+  const at = (x: number, y: number) => { const p = scene.project(x, y); return `${Math.round(x)},${Math.round(y)},${Math.round(p.x)},${Math.round(p.y)}`; };
+  function testInfo(shown: Battle) {
+    if (!root.dataset.ready) root.dataset.ready = '1'; // the first battle frame is drawn
+    setData('camera', cam.mode);
+    setData('detail', scene.detail);
+    setData('view', [cam.view!.cx, cam.view!.cy, cam.view!.halfW].map(Math.round).join(','));
+    setData('tanks', shown.tanks.filter(t => !t.gone).map(t => `${t.id}:${at(t.x, t.y)},${+t.alive}`).join(';'));
+    setData('shells', shown.shell ? at(shown.shell.x, shown.shell.y) : '');
+    setData('blast', lastBlast ? at(lastBlast[0], lastBlast[1]) : '');
+    if (!materialsKey) { // the middle of each material's widest stretch of surface
+      materialsKey = '1'; materials = [];
+      const runs = new Map<Material, [number, number]>();
+      let start = 0, prev: Material | null = null;
+      for (let x = 2; x <= 1602; x += 4) {
+        const m = x < 1600 ? surfaceAt(shown.terrain, x)?.m ?? null : null;
+        if (m !== prev) { if (prev !== null && (!runs.has(prev) || x - start > runs.get(prev)![1] - runs.get(prev)![0])) runs.set(prev, [start, x]); start = x; prev = m; }
+      }
+      for (const [m, [x0, x1]] of runs) { const x = (x0 + x1 - 4) / 2; materials.push([m, x, surfaceAt(shown.terrain, x)!.y]); }
+    }
+    setData('materials', materials.map(([m, x, y]) => `${m}:${at(x, y + 2)}`).join(';'));
   }
   const nameOf = (t: Tank) => {
     if (t.owner && 'player' in t.owner) return t.look.name.trim() || `Player ${t.owner.player + 1}`;
@@ -438,7 +520,7 @@ export function mount(root: HTMLElement): () => void {
     return li;
   }
   function loop(now: number) {
-    const dt = Math.min(MAX_FRAME_S, (now - last) / 1000); last = now; time += dt;
+    const dt = Math.min(MAX_FRAME_S, (now - last) / 1000); last = now; time += dt; frameDt = dt;
     if (screen === Screen.Play && b && !(paused && !online())) {
       acc += dt;
       while (acc >= 1 / STEP_HZ && screen === Screen.Play) { tick(); acc -= 1 / STEP_HZ; }
@@ -469,7 +551,8 @@ export function mount(root: HTMLElement): () => void {
   }
   function enterPlay() {
     mem = newMemory(); endT = 0; acc = 0; panelKey = '';
-    groundChanged(b!.terrain);
+    groundChanged(b!.terrain); lastBlast = null; delete root.dataset.ready;
+    cam.turn = ''; cam.holdUntil = 0; cam.view = null; scene.probe();
     screen = Screen.Play;
     $('setup').style.display = 'none'; $('end').style.display = 'none';
     (document.activeElement as HTMLElement | null)?.blur();
@@ -524,7 +607,6 @@ export function mount(root: HTMLElement): () => void {
       stageKey = key;
       stage = createBattle(seeded(PREVIEW_SEED), map, players);
       stage.phase = Phase.Over; // nobody's turn: no arrow
-      groundChanged(stage.terrain);
     }
     return stage;
   }
@@ -532,7 +614,7 @@ export function mount(root: HTMLElement): () => void {
     const p: TankLook = cfg.players[edit], spec = specOf(p), guest = online() && !lobby.isHost();
     const shown = guest ? picks : { map: cfg.map, tanks: online() ? roomTanks() : cfg.tanks, level: cfg.difficulty };
     const on = (id: string, value: string | undefined) => [...$(id).children].forEach(x => x.classList.toggle('on', x.textContent === value));
-    on('cStyle', cfg.style); on('cPlayers', mode); on('cType', p.type); on('cVariant', p.variant); on('cTanks', String(shown.tanks)); on('cMap', shown.map); on('cLevel', shown.level); on('cSide', mySide);
+    on('cPlayers', mode); on('cType', p.type); on('cVariant', p.variant); on('cTanks', String(shown.tanks)); on('cMap', shown.map); on('cLevel', shown.level); on('cSide', mySide);
     for (const id of ['cTanks', 'cMap', 'cLevel']) [...$(id).children].forEach(x => { (x as HTMLButtonElement).disabled = guest; });
     [...$('cEdit').children].forEach((x, i) => x.classList.toggle('on', i === edit));
     $('editRow').style.display = mode === PlayerMode.Two ? '' : 'none';
@@ -540,7 +622,7 @@ export function mount(root: HTMLElement): () => void {
     $('stats').textContent = `Cannon ${spec.minAngle}°–${spec.maxAngle}° · Damage ${tenths(spec.damage)} · Top power ${spec.topPower} · Hearts ${spec.hearts / 10} · Grip ${spec.grip} · Speed ${spec.speed}`;
     $('keys').textContent = KEY_HELP;
     $('colorNote').textContent = note;
-    drawPreview(preview, p, cfg.style);
+    scene.drawPreview(p, preview);
     save(); sendLook(); lobby.render(); // the popup and waiting room, then garageInfo()
     if (online() && lobby.isHost()) sendMode();
   }
@@ -568,13 +650,17 @@ export function mount(root: HTMLElement): () => void {
   optRow('cTanks', TANK_COUNTS.map(String), v => { cfg.tanks = Number(v); refreshGarage(); });
   optRow('cMap', values(MapId), v => { cfg.map = v; refreshGarage(); });
   optRow('cLevel', values(Difficulty), v => { cfg.difficulty = v; refreshGarage(); });
-  optRow('cStyle', values(Style), v => { // the look and sounds: normal or pixel-art arcade
-    cfg.style = v; root.classList.toggle(Style.Arcade, v === Style.Arcade); sound.setStyle(v); refreshGarage();
-  });
   optRow('cEdit', values(TankTab), tab => { edit = values(TankTab).indexOf(tab); loadInputs(); refreshGarage(); });
   optRow('cPlayers', MODES, m => { mode = m; edit = 0; lobby.setActive(m === PlayerMode.Online); loadInputs(); garage(); });
   $('go').onclick = startGame;
   $('mute').onclick = () => { cfg.muted = !cfg.muted; sound.setMuted(cfg.muted); save(); };
+  const showMap = () => {
+    root.classList.toggle('overview-hidden', !cfg.overview);
+    $('overviewToggle').textContent = cfg.overview ? 'Hide map' : 'Show map';
+    $('overviewToggle').setAttribute('aria-pressed', String(!cfg.overview));
+  };
+  $('overviewToggle').onclick = () => { cfg.overview = !cfg.overview; save(); showMap(); };
+  showMap();
   $('panelToggle').onclick = () => {
     const open = root.classList.toggle('panel-closed') === false;
     $('panelToggle').setAttribute('aria-expanded', String(open));
@@ -594,8 +680,10 @@ export function mount(root: HTMLElement): () => void {
     clearTimeout(sideTimer);
     lobby.dispose();
     sound.dispose();
+    scene.dispose();
     if (viewport && siteViewport !== undefined) viewport.content = siteViewport;
     root.innerHTML = '';
-    root.classList.remove('tc', 'touch', 'my-turn', 'panel-closed');
+    root.classList.remove('tc', 'touch', 'my-turn', 'panel-closed', 'overview-hidden');
+    for (const k of Object.keys(root.dataset)) delete root.dataset[k];
   };
 }

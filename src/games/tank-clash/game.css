@@ -1,6 +1,7 @@
 /* Tank Clash (scoped under .tc; the whole field fits the screen in either orientation, no page scrolling) */
 .tc{position:fixed;inset:0;overflow:hidden;background:#1b2330;color:#fff;font:15px/1.4 system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:none}
 .tc #view{position:absolute;inset:0;width:100%;height:100%;display:block}
+.tc #labels{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .tc #hud{position:absolute;inset:0;pointer-events:none}
 .tc #hud button,.tc #hud input,.tc #hud label{pointer-events:auto}
 .tc button{font:inherit;border:0;border-radius:8px;cursor:pointer;color:#fff}
@@ -61,18 +62,8 @@
 }
 .tc #credits{grid-column:1/-1;margin:0;font-size:11px;opacity:.75;line-height:1.4}
 .tc #credits a{color:inherit}
-/* the arcade style: a bundled pixel font, square bevelled buttons and panels, a yellow countdown (spec Style) */
-@font-face{font-family:'Press Start 2P';src:url('./fonts/press-start-2p.woff2') format('woff2');font-display:swap}
-.tc #cStyle .opt{text-transform:capitalize}
-.tc.arcade{font-family:'Press Start 2P',monospace;font-size:10px;line-height:1.6;background:#20160e}
-.tc.arcade #setup,.tc.arcade #bar,.tc.arcade #panel,.tc.arcade #controls{border-radius:0;background:#0e0905e6;border:4px solid #5a4430}
-.tc.arcade h1{color:#ffd84a;text-shadow:3px 3px 0 #8a2b12;font-size:18px}
-.tc.arcade button{border-radius:0;font-family:inherit;font-size:10px;background:#6b5a44;border:3px solid #0e0905;box-shadow:inset 3px 3px 0 #9a8466,inset -3px -3px 0 #3a2e22;text-shadow:2px 2px 0 #0e0905}
-.tc.arcade button.on{background:#d8402a;box-shadow:inset 3px 3px 0 #ff7a5c,inset -3px -3px 0 #8f2316}
-.tc.arcade #go,.tc.arcade #fireBtn{background:#d8402a;color:#ffd84a;box-shadow:inset 3px 3px 0 #ff7a5c,inset -3px -3px 0 #8f2316}
-.tc.arcade #mute{background:none;border:0;box-shadow:none}
-.tc.arcade input{font-family:inherit;font-size:10px;border-radius:0}
-.tc.arcade #timer{font-family:inherit;font-size:14px;color:#fff4d6;background:#8f2316;border:3px solid #ff7a5c;padding:2px 6px}
-.tc.arcade #whoseTurn{color:#ffd84a !important}
-.tc.arcade #bigCount{font-family:inherit;color:#ffd84a;text-shadow:6px 6px 0 #8a2b12}
-.tc.arcade #credits{font-family:system-ui,sans-serif}
+/* the overview map (specs/008): see-through, under the turn bar on the right, clear of the panel and the controls */
+.tc #mapBox{position:absolute;top:calc(48px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.tc #overview{width:min(220px,34vw);aspect-ratio:16/9;border-radius:6px;touch-action:none;pointer-events:auto;cursor:grab}
+.tc.overview-hidden #overview{display:none}
+.tc #overviewToggle{background:#000a;padding:2px 8px;font-size:12px}

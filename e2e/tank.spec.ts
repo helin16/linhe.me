@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { gameRoute } from '../src/shared/routes.ts';
 import { GameSlug } from '../src/games/index.ts';
 import { player } from './helpers.ts';
+import { look } from './pixels.ts';
 
 const TANK = gameRoute(GameSlug.TankClash);
 const start = (page: Page) => page.getByRole('button', { name: 'Start', exact: true }).click();
@@ -138,6 +139,7 @@ test.describe('US1: battle computer tanks solo', () => {
     await pick(page, '10');
     await start(page);
     await page.getByRole('button', { name: 'FIRE' }).click();
+    await expect(page.locator('.tc')).toHaveAttribute('data-detail', /^(full|low)$/); // lowering detail is allowed (009 FR-013)
     const fps = await page.evaluate(() => new Promise<number>(done => {
       let frames = 0; const t0 = performance.now();
       const count = (t: number) => { frames++; if (t - t0 < 3000) requestAnimationFrame(count); else done(frames / ((t - t0) / 1000)); };
@@ -201,6 +203,23 @@ test.describe('US3: choose and customise your tank', () => {
     await start(a.page);
     await expect(hearts(a.page, '<b>x</b>')).toHaveText('5.0');
     await expect(row(a.page, '<b>x</b>').locator('.name')).toHaveText('<b>x</b>');
+    expect(a.errors).toEqual([]);
+    await a.close();
+  });
+
+  test('Arcade is gone: no Style row; a save from Arcade days plays in the normal look and keeps its choices (008 US4)', async ({ browser }, info) => {
+    const a = await player(browser, info, TANK);
+    await expect(a.page.locator('#styleRow')).toHaveCount(0);
+    await expect(a.page.getByRole('button', { name: 'Arcade' })).toHaveCount(0);
+    await a.page.evaluate(() => localStorage.setItem('tc-cfg', JSON.stringify({ style: 'arcade', muted: true, tanks: 4,
+      players: [{ name: 'Ann', color: '#3366ff', type: 'Heavy' }] })));
+    await a.page.reload();
+    await expect(a.page.getByLabel('Name')).toHaveValue('Ann');
+    await expect(a.page.getByRole('button', { name: '4', exact: true })).toHaveClass(/on/);
+    await start(a.page);
+    await expect(a.page.locator('#mute')).toHaveText('🔇');
+    await expect(hearts(a.page, 'Ann')).toHaveText('5.0');
+    await expect(a.page.locator('.tc')).not.toHaveClass(/arcade/);
     expect(a.errors).toEqual([]);
     await a.close();
   });
@@ -417,5 +436,261 @@ test.describe('US6: play online', () => {
     await d.page.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(d.page.locator('#panel .tank')).toHaveCount(2);
     await d.close();
+  });
+});
+
+// specs/008-tank-focus-camera and specs/009-tank-semi-3d: the game reports where things are on screen for these tests
+// (contracts/ui.md: data-camera, data-view, data-tanks, data-shells, data-blast, data-materials)
+const tc = (page: Page) => page.locator('.tc');
+const attr = async (page: Page, name: string) => (await tc(page).getAttribute(`data-${name}`)) ?? '';
+const viewOf = async (page: Page) => { const [cx, cy, halfW] = (await attr(page, 'view')).split(',').map(Number); return { cx, cy, halfW }; };
+const tanksOf = async (page: Page) => (await attr(page, 'tanks')).split(';').filter(Boolean).map(s => {
+  const [id, rest] = s.split(':'), [x, y, sx, sy, alive] = rest.split(',').map(Number);
+  return { id: Number(id), x, y, sx, sy, alive: alive === 1 };
+});
+const point = (s: string) => { const [x, y, sx, sy] = s.split(',').map(Number); return { x, y, sx, sy }; };
+const aspectOf = (page: Page) => { const v = page.viewportSize()!; return v.width / v.height; };
+const shows = (v: { cx: number; cy: number; halfW: number }, x: number, y: number, aspect: number) =>
+  Math.abs(x - v.cx) <= v.halfW + 2 && Math.abs(y - v.cy) <= v.halfW / aspect + 2;
+const CLOSE = 400; // half the field's width (constants CLOSE_HALF_W)
+
+test.describe('008/009: the 3D look, the camera and the overview map', () => {
+  test('every map is solid 3D; each material looks itself; a shot leaves a crater with soil inside (009 US1)', async ({ browser }, info) => {
+    test.setTimeout(120_000);
+    const isMat: Record<string, (c: number[]) => boolean> = {
+      1: ([r, g, b]) => r > b || g > b,                  // earth: grass or soil, never sky blue
+      2: ([r, g, b]) => r > 190 && g > 190 && b > 190,   // snow: bright
+      3: ([r, g, b]) => b > r && b > 150,                // ice: pale blue
+      4: ([r, g, b]) => r > b + 25,                      // wood: brown
+      5: ([r, , b]) => b > r + 30,                       // water: blue
+    };
+    for (const map of ['Green Hills', 'Timber Gap', 'Lake Valley', 'Frost Ridge']) {
+      const a = await player(browser, info, `${TANK}?seed=1`);
+      await pick(a.page, map); await start(a.page);
+      await expect(tc(a.page)).toHaveAttribute('data-ready', '1');
+      await a.page.clock.runFor(1500); // the view has settled
+      const img = await look(a.page), tanks = await tanksOf(a.page);
+      for (const m of (await attr(a.page, 'materials')).split(';')) {
+        const [mat, rest] = m.split(':'), p = point(rest);
+        if (p.sx < 0 || p.sx >= img.w || p.sy < 0 || p.sy >= img.h) continue; // off screen at the close view
+        if (tanks.some(t => Math.abs(t.sx - p.sx) < 60 && Math.abs(t.sy - p.sy) < 40)) continue; // a tank stands there
+        expect(isMat[mat](img.at(p.sx, p.sy)), `${map}: material ${mat} at ${p.sx},${p.sy} is ${img.at(p.sx, p.sy)}`).toBe(true);
+      }
+      expect(a.errors).toEqual([]);
+      await a.close();
+    }
+    const a = await player(browser, info, `${TANK}?seed=1`);
+    await pick(a.page, 'Green Hills'); await start(a.page);
+    await expect(turn(a.page)).toHaveText("Player 1's turn");
+    await a.page.keyboard.press('Space');
+    await expect.poll(() => attr(a.page, 'blast'), { timeout: 10_000 }).not.toBe('');
+    await a.page.clock.runFor(1200); // the fireball has gone
+    const blast = point(await attr(a.page, 'blast')), [r, , b] = (await look(a.page)).at(blast.sx, blast.sy + 6);
+    expect(b - r, 'soil shows inside the crater, not the blue sky behind').toBeLessThan(40);
+    expect(a.errors).toEqual([]);
+    await a.close();
+  });
+
+  test('tanks are solid 3D: each type and build looks different in the garage; bonuses show on the field (009 US2)', async ({ browser }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=1`);
+    const shot = () => a.page.locator('#preview').evaluate((c: HTMLCanvasElement) => c.toDataURL());
+    const seen = new Set<string>();
+    for (const type of ['Scout', 'Allrounder', 'Heavy', 'Artillery']) for (const build of ['A', 'B', 'C']) {
+      await pick(a.page, type); await pick(a.page, build);
+      seen.add(await shot());
+    }
+    expect(seen.size, 'twelve different previews').toBe(12);
+    expect(a.errors).toEqual([]);
+    await a.close();
+  });
+
+  test('a repair kit sends a heart up from the tank (009 FR-009)', async ({ browser }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=1`);
+    await pick(a.page, 'Green Hills'); await start(a.page);
+    await expect(turn(a.page)).toHaveText("Player 1's turn");
+    await a.page.clock.runFor(31_000);
+    await expect(turn(a.page)).toHaveText("Player 1's turn", { timeout: 15_000 });
+    await a.page.clock.runFor(5000);
+    await a.page.keyboard.down('ArrowRight');
+    await expect(a.page.locator('#msg')).toHaveText('Repair kit!', { timeout: 10_000 });
+    await a.page.keyboard.up('ArrowRight');
+    const me = (await tanksOf(a.page)).find(t => t.id === 0)!, img = await look(a.page);
+    let red = 0;
+    for (let dy = 20; dy < 110; dy += 3) for (let dx = -12; dx <= 12; dx += 3) {
+      const [r, g, b] = img.at(me.sx + dx, me.sy - dy); if (r > 200 && g < 120 && b < 150) red++;
+    }
+    expect(red, 'a red heart above the tank').toBeGreaterThan(0);
+    await a.close();
+  });
+
+  test('the camera follows the tank in turn up close and keeps it in the middle third while driving (008 US1)', async ({ browser }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=1`), aspect = aspectOf(a.page);
+    await pick(a.page, 'Green Hills'); await start(a.page);
+    await expect(turn(a.page)).toHaveText("Player 1's turn");
+    await a.page.clock.runFor(1000);
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'follow');
+    const check = async () => {
+      const v = await viewOf(a.page), t = (await tanksOf(a.page)).find(x => x.id === 0)!;
+      expect(v.halfW).toBe(CLOSE);
+      expect(Math.abs(v.cx - Math.min(1600 - CLOSE, Math.max(CLOSE, t.x)))).toBeLessThanOrEqual(CLOSE / 3 + 2);
+      expect(shows(v, t.x, t.y, aspect)).toBe(true);
+    };
+    await check();
+    await a.page.keyboard.down('ArrowRight');
+    for (let i = 0; i < 5; i++) { await a.page.clock.runFor(200); await check(); }
+    await a.page.keyboard.up('ArrowRight');
+    // the next turn: the computer's tank (step to it, so it hasn't fired yet when we look)
+    for (let i = 0; i < 80 && (await turn(a.page).textContent()) !== "CPU 1's turn (computer)"; i++) await a.page.clock.runFor(500);
+    await expect(turn(a.page)).toHaveText("CPU 1's turn (computer)");
+    let close = false; // before it fires (it thinks for 0.9 s), the close view lands on its tank
+    for (let i = 0; i < 120 && !close && !(await attr(a.page, 'shells')); i++) {
+      await a.page.clock.runFor(17);
+      const v = await viewOf(a.page), cpu = (await tanksOf(a.page)).find(x => x.id === 1)!;
+      close = v.halfW === CLOSE && shows(v, cpu.x, cpu.y, aspect);
+    }
+    expect(close).toBe(true);
+    expect(a.errors).toEqual([]);
+    await a.close();
+  });
+
+  test('the camera never jumps; with reduced motion it does (008 FR-002, FR-010)', async ({ browser }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=1`);
+    await pick(a.page, 'Green Hills'); await start(a.page);
+    await expect(turn(a.page)).toHaveText("Player 1's turn");
+    const steps: number[] = [];
+    let prev = await viewOf(a.page);
+    for (let i = 0; i < 40; i++) { // through the zoom-in from the whole field
+      await a.page.clock.runFor(17);
+      const v = await viewOf(a.page);
+      steps.push(Math.max(Math.abs(v.cx - prev.cx), Math.abs(v.halfW - prev.halfW) * 2) / (2 * prev.halfW));
+      prev = v;
+    }
+    expect(Math.max(...steps)).toBeLessThanOrEqual(0.1); // two frames' worth at most: 5% a frame
+    await a.page.emulateMedia({ reducedMotion: 'reduce' });
+    await a.page.goto(`${TANK}?seed=1`);
+    await pick(a.page, 'Green Hills'); await start(a.page);
+    await expect(turn(a.page)).toHaveText("Player 1's turn");
+    await a.page.clock.runFor(50);
+    expect((await viewOf(a.page)).halfW, 'straight to the close view').toBe(CLOSE);
+    await a.close();
+  });
+
+  test('a shot: the view widens to keep the firing tank and the shell on screen, shows the blast, then the next tank (008 US2)', async ({ browser }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=1`), aspect = aspectOf(a.page);
+    await pick(a.page, 'Green Hills'); await start(a.page);
+    await expect(turn(a.page)).toHaveText("Player 1's turn");
+    await aim(a.page, 45, 95);
+    await a.page.clock.runFor(1000);
+    const shooter = (await tanksOf(a.page)).find(t => t.id === 0)!;
+    await a.page.keyboard.press('Space');
+    let widest = 0, frames = 0;
+    for (let i = 0; i < 400; i++) {
+      await a.page.clock.runFor(17);
+      const shell = await attr(a.page, 'shells');
+      if (!shell) { if (frames) break; continue; }
+      frames++;
+      const v = await viewOf(a.page), s = point(shell);
+      expect(await attr(a.page, 'camera')).toBe('shot');
+      if (s.y >= 0) expect(shows(v, s.x, s.y, aspect), `shell at ${s.x},${s.y} in view ${JSON.stringify(v)}`).toBe(true);
+      expect(shows(v, shooter.x, shooter.y, aspect)).toBe(true);
+      widest = Math.max(widest, v.halfW);
+    }
+    expect(frames).toBeGreaterThan(10);
+    expect(widest, 'a long shot widens the view').toBeGreaterThan(CLOSE);
+    const blast = point(await attr(a.page, 'blast'));
+    expect(shows(await viewOf(a.page), blast.x, blast.y, aspect)).toBe(true);
+    await expect(turn(a.page)).toHaveText("CPU 1's turn (computer)", { timeout: 10_000 });
+    await a.page.clock.runFor(1500);
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'follow');
+    await a.close();
+  });
+
+  test('the battle over: the whole field (008 FR-013)', async ({ browser }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=14`);
+    await pick(a.page, '2 Players'); await pick(a.page, 'Timber Gap'); await start(a.page);
+    await aim(a.page, 30, 64);
+    await a.page.keyboard.press('Space');
+    await expect(a.page.locator('#endText')).toContainText('Player 1 wins!', { timeout: 10_000 });
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'whole');
+    await expect.poll(async () => (await viewOf(a.page)).halfW).toBeGreaterThanOrEqual(799); // gliding out to the whole field
+    await a.close();
+  });
+
+  test('the overview map: drag or tap to look around, keys too; driving brings the camera back; hiding is remembered (008 US3)', async ({ browser }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=1`);
+    await pick(a.page, 'Green Hills'); await start(a.page);
+    await expect(turn(a.page)).toHaveText("Player 1's turn");
+    await a.page.clock.runFor(1000);
+    const map = a.page.locator('#overview'), box = (await map.boundingBox())!, before = await viewOf(a.page);
+    if (info.project.name.includes('ipad')) await map.tap({ position: { x: box.width - 4, y: box.height / 2 } });
+    else {
+      const x0 = box.x + before.cx / 1600 * box.width, y = box.y + box.height / 2;
+      await a.page.mouse.move(x0, y); await a.page.mouse.down(); await a.page.mouse.move(box.x + box.width - 4, y, { steps: 5 }); await a.page.mouse.up();
+    }
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'held');
+    await a.page.clock.runFor(1000);
+    expect((await viewOf(a.page)).cx).toBe(1600 - CLOSE); // to the far side, same zoom
+    expect((await viewOf(a.page)).halfW).toBe(before.halfW);
+    await a.page.keyboard.down('ArrowRight'); await a.page.clock.runFor(100); await a.page.keyboard.up('ArrowRight');
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'follow');
+    await a.page.keyboard.press('BracketRight');
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'held');
+    await a.page.keyboard.press('KeyF');
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'follow');
+    await a.page.getByRole('button', { name: 'Hide map' }).click();
+    await expect(map).toBeHidden();
+    await a.page.reload(); await start(a.page);
+    await expect(a.page.getByRole('button', { name: 'Show map' })).toBeVisible();
+    await expect(map).toBeHidden();
+    expect(a.errors).toEqual([]);
+    await a.close();
+  });
+
+  test('the overview map stays clear of the tank list, the turn bar and the controls on phones and desktops (008 FR-011)', async ({ browser }, info) => {
+    for (const size of [{ width: 844, height: 390 }, { width: 390, height: 844 }, { width: 1280, height: 720 }]) {
+      const a = await player(browser, info, `${TANK}?seed=1`, { viewport: size });
+      await pick(a.page, '4'); await start(a.page);
+      await expect(turn(a.page)).toHaveText("Player 1's turn");
+      const boxOf = async (sel: string) => (await a.page.locator(sel).boundingBox())!;
+      const m = await boxOf('#mapBox');
+      for (const sel of ['#panel', '#bar', '#controls']) {
+        const o = await boxOf(sel);
+        const apart = m.x + m.width <= o.x || o.x + o.width <= m.x || m.y + m.height <= o.y || o.y + o.height <= m.y;
+        expect(apart, `${size.width}×${size.height}: the map and ${sel}`).toBe(true);
+      }
+      await a.close();
+    }
+  });
+
+  test('a battle opens quickly (009 SC-005)', async ({ browser, browserName }, info) => {
+    const a = await player(browser, info, `${TANK}?seed=1`);
+    const t0 = Date.now();
+    await start(a.page);
+    await expect(tc(a.page)).toHaveAttribute('data-ready', '1');
+    expect(Date.now() - t0).toBeLessThan(browserName === 'webkit' ? 3500 : 2500);
+    await a.close();
+  });
+
+  test('online: each screen looks around on its own; both see the same battle (008 FR-009)', async ({ browser }, info) => {
+    test.setTimeout(120_000);
+    const a = await player(browser, info, TANK);
+    await a.page.getByLabel('Name').fill('Ann');
+    await a.page.getByRole('button', { name: 'Online', exact: true }).click();
+    await a.page.getByLabel('Players').selectOption('2');
+    await a.page.getByRole('button', { name: 'Host a room' }).click();
+    await expect(a.page.locator('#roomCount')).toHaveText('1/2 players', { timeout: 5000 });
+    const code = (await a.page.locator('#roomCode').textContent())!.trim();
+    const b = await player(browser, info, `${TANK}?room=${code}`);
+    await expect(a.page.locator('#roomCount')).toHaveText('2/2 players', { timeout: 10_000 });
+    await a.page.getByRole('button', { name: 'Start', exact: true }).click();
+    for (const p of [a.page, b.page]) await expect(p.locator('#panel .tank')).toHaveCount(2, { timeout: 10_000 });
+    await a.page.waitForTimeout(1500);
+    await a.page.bringToFront();
+    await a.page.keyboard.press('BracketRight'); await a.page.keyboard.press('BracketRight');
+    await expect(tc(a.page)).toHaveAttribute('data-camera', 'held');
+    await b.page.bringToFront();
+    await expect(tc(b.page)).not.toHaveAttribute('data-camera', 'held');
+    expect(await a.page.locator('#panel .num').allTextContents()).toEqual(await b.page.locator('#panel .num').allTextContents());
+    await a.close(); await b.close();
   });
 });

@@ -90,3 +90,21 @@ export const POSE_HZ = 15;
 
 // offline replay and test setup (research R12)
 export const SEED_QUERY = 'seed';
+
+// the 3D view (specs/009-tank-semi-3d research R2–R10) and the camera (specs/008-tank-focus-camera)
+export const GROUND_DEPTH = 70;        // the ground slab runs this far back into the scene
+export const CAMERA_FOV = 30;          // degrees, vertical: narrow, so shell arcs read as today
+export const CAMERA_TILT_DEG = 6;      // the camera looks down a little, so hill tops show as a strip
+export const CHUNK_CELLS = 32;         // the ground mesh is rebuilt in columns this many cells wide
+export const CLOSE_HALF_W = WORLD_W / 4; // the close view shows half the field's width
+export const FAR_LAYER_Z = -600;       // the far mountains
+export const NEAR_LAYER_Z = -250;      // the near hills with trees and props
+export const FOLLOW_BAND = 1 / 3;      // the active tank stays inside the middle third of the view
+export const SHOT_PAD = 80;            // room kept around the tank and the shell in a shot view
+export const GLIDE_S = 0.2;            // the camera's smoothing time constant: within 1% of its target in 1 s
+export const MAX_STEP = 0.05;          // the most a view may move or resize in a frame, as a share of its width
+export const SETTLE_HOLD_S = 0.3;      // after a shot, the view stays on its blast this long once the battle settles
+export const LOOK_STEP = 120;          // units the view moves per [ or ] press
+export const LOW_DETAIL_FPS = 55;      // below this after DETAIL_PROBE_S, drop to low detail (aiming for 60, at least 50)
+export const DETAIL_PROBE_S = 2;
+export const OVERVIEW_OPACITY = 0.6;

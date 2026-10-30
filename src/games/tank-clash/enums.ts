@@ -51,10 +51,15 @@ export type Screen = typeof Screen[keyof typeof Screen];
 export const ResultAction = { Again: 'play-again', Garage: 'to-garage' } as const;
 export type ResultAction = typeof ResultAction[keyof typeof ResultAction];
 
-// the game's look and sounds: the normal cartoon style or the pixel-art arcade one (shown capitalised)
-export const Style = { Normal: 'normal', Arcade: 'arcade' } as const;
-export type Style = typeof Style[keyof typeof Style];
-
 // on-screen buttons held down to drive and aim
 export const Hold = { DriveLeft: 'drive-left', DriveRight: 'drive-right', AimUp: 'aim-up', AimDown: 'aim-down', PowerDown: 'power-down', PowerUp: 'power-up' } as const;
 export type Hold = typeof Hold[keyof typeof Hold];
+
+// what the 3D camera is doing (specs/008-tank-focus-camera): following the tank in turn, framing a shot, held where a
+// player moved it, or showing the whole field when the battle is over (not the overview map)
+export const CameraMode = { Follow: 'follow', Shot: 'shot', Held: 'held', Whole: 'whole' } as const;
+export type CameraMode = typeof CameraMode[keyof typeof CameraMode];
+
+// the 3D ground's surfaces, each with its own look (specs/009-tank-semi-3d research R3–R4)
+export const GroundPart = { Grass: 'grass', Soil: 'soil', Snow: 'snow', Ice: 'ice', Wood: 'wood', Water: 'water' } as const;
+export type GroundPart = typeof GroundPart[keyof typeof GroundPart];

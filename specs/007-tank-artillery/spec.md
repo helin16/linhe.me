@@ -541,7 +541,7 @@ The home page and games page list the game next to Turbo Tumble and Snake Duel.
   link, licence), and because two are non-commercial the game MUST stay free with no ads. Other
   sounds are made by the game. No sound is taken from another game. Sounds start only after the player's first tap or key press (browser rule), and
   a mute button MUST silence them all, remembered on this device.
-- **FR-026**: The garage MUST offer a Style switch at the top of its panel: Normal (default) or Arcade,
+- **FR-026** (replaced by 008 FR-012: Arcade removed): The garage MUST offer a Style switch at the top of its panel: Normal (default) or Arcade,
   remembered on this device and applying to this device only. Arcade MUST draw pixel-art tanks (one
   sprite per type and build in the player's colour, cannons at the tank's angle, bonuses shown as in FR-021),
   pixel-art scenery and ground for every map with background props on the hills behind the field (ruins, sandbags,

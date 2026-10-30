@@ -1,13 +1,13 @@
-// Tank Clash's saved choices on this device: both players' tanks (type, name, colour), map, tank count, difficulty
-// mute and style. Anything malformed falls back to its default, field by field.
+// Tank Clash's saved choices on this device: both players' tanks (type, name, colour), map, tank count, difficulty,
+// mute and whether the overview map shows. Anything malformed falls back to its default, field by field.
 import { isMember } from '../../shared/enum.ts';
 import { DEFAULT_TANKS, TANK_COUNTS } from './constants.ts';
-import { Difficulty, MapId, Side, Style, TankType, Variant } from './enums.ts';
+import { Difficulty, MapId, Side, TankType, Variant } from './enums.ts';
 import { DEFAULT_TYPE, DEFAULT_VARIANT } from './tanks.ts';
 
 /** A player's tank as picked in the garage; online it also carries the side they chose. */
 export type TankLook = { name: string; color: string; type: TankType; variant?: Variant; side?: Side };
-export type Settings = { players: [TankLook, TankLook]; map: MapId; tanks: number; difficulty: Difficulty; muted: boolean; style: Style };
+export type Settings = { players: [TankLook, TankLook]; map: MapId; tanks: number; difficulty: Difficulty; muted: boolean; overview: boolean };
 
 const KEY = 'tc-cfg';
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -19,7 +19,7 @@ export const defaults = (): Settings => ({
     { name: 'Player 1', color: '#4caf50', type: DEFAULT_TYPE, variant: DEFAULT_VARIANT },
     { name: 'Player 2', color: '#e53935', type: DEFAULT_TYPE, variant: DEFAULT_VARIANT },
   ],
-  map: MapId.Random, tanks: DEFAULT_TANKS, difficulty: Difficulty.Normal, muted: false, style: Style.Normal,
+  map: MapId.Random, tanks: DEFAULT_TANKS, difficulty: Difficulty.Normal, muted: false, overview: true,
 });
 
 export function fixLook(p: unknown, d: TankLook): TankLook {
@@ -57,7 +57,7 @@ export function loadSettings(raw: string | null): Settings {
     tanks: TANK_COUNTS.includes(s.tanks as number) ? s.tanks as number : d.tanks,
     difficulty: isMember(Difficulty, s.difficulty) ? s.difficulty : d.difficulty,
     muted: s.muted === true,
-    style: isMember(Style, s.style) ? s.style : d.style,
+    overview: s.overview !== false, // an old saved style (Arcade, removed) is simply not read
   };
 }
 

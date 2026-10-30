@@ -18,14 +18,14 @@ const enums: Record<string, Record<string, string>> = { Route, GameSlug, Track, 
   SnakePattern: Snake.SnakePattern, SnakeEyes: Snake.SnakeEyes, MatchType: Snake.MatchType, Difficulty: Snake.Difficulty,
   SnakeMsg: Snake.SnakeMsg, MatchState: Snake.MatchState, SnakeTab: Snake.SnakeTab, Screen: Snake.Screen, ResultAction: Snake.ResultAction,
   TankType: Tank.TankType, MapId: Tank.MapId, Side: Tank.Side, Grip: Tank.Grip, Drop: Tank.Drop, TankDifficulty: Tank.Difficulty,
-  Phase: Tank.Phase, TankMsg: Tank.TankMsg, TankTab: Tank.TankTab, TankScreen: Tank.Screen, TankResultAction: Tank.ResultAction, Hold: Tank.Hold, Variant: Tank.Variant, Style: Tank.Style };
+  Phase: Tank.Phase, TankMsg: Tank.TankMsg, TankTab: Tank.TankTab, TankScreen: Tank.Screen, TankResultAction: Tank.ResultAction, Hold: Tank.Hold, Variant: Tank.Variant, CameraMode: Tank.CameraMode, GroundPart: Tank.GroundPart };
 // the one file allowed to hold each enum's definition
 const home: Record<string, string> = {
   RelayMsg: '../relay/protocol.ts',
   Route: 'shared/routes.ts', GameSlug: 'games/index.ts', Track: 'games/turbo-tumble/settings.ts', KartStyle: 'games/turbo-tumble/settings.ts',
   PlayerMode: 'shared/modes.ts',
   ...Object.fromEntries(['SnakePattern', 'SnakeEyes', 'MatchType', 'Difficulty', 'SnakeMsg', 'MatchState', 'SnakeTab', 'Screen', 'ResultAction'].map(n => [n, 'games/snake-duel/enums.ts'])),
-  ...Object.fromEntries(['TankType', 'MapId', 'Side', 'Grip', 'Drop', 'TankDifficulty', 'Phase', 'TankMsg', 'TankTab', 'TankScreen', 'TankResultAction', 'Hold', 'Variant', 'Style'].map(n => [n, 'games/tank-clash/enums.ts'])),
+  ...Object.fromEntries(['TankType', 'MapId', 'Side', 'Grip', 'Drop', 'TankDifficulty', 'Phase', 'TankMsg', 'TankTab', 'TankScreen', 'TankResultAction', 'Hold', 'Variant', 'CameraMode', 'GroundPart'].map(n => [n, 'games/tank-clash/enums.ts'])),
   ...Object.fromEntries(['RaceState', 'MsgType', 'Item', 'Action', 'EditTab', 'EndAction'].map(n => [n, 'games/turbo-tumble/enums.ts'])),
 };
 // value → files where it may still appear written out, with the reason

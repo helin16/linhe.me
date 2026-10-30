@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Difficulty, MapId, Side, Style, TankType, Variant } from './enums.ts';
+import { Difficulty, MapId, Side, TankType, Variant } from './enums.ts';
 import { defaults, distinctColors, fixLook, loadSaved, loadSettings, saveSettings } from './settings.ts';
 
 test('defaults when nothing or junk is saved', () => {
@@ -8,11 +8,11 @@ test('defaults when nothing or junk is saved', () => {
   assert.equal(defaults().players[0].type, TankType.Allrounder);
   assert.equal(defaults().tanks, 2);
   assert.equal(defaults().map, MapId.Random);
-  assert.equal(defaults().style, Style.Normal);
+  assert.equal(defaults().overview, true, 'the overview map shows unless hidden');
 });
 
 test('a saved setup comes back as it was', () => {
-  const s = { ...defaults(), map: MapId.FrostRidge, tanks: 6, difficulty: Difficulty.Hard, muted: true, style: Style.Arcade };
+  const s = { ...defaults(), map: MapId.FrostRidge, tanks: 6, difficulty: Difficulty.Hard, muted: true, overview: false };
   s.players[0] = { name: 'Ann', color: '#112233', type: TankType.Heavy, variant: Variant.C };
   assert.deepEqual(loadSettings(JSON.stringify(s)), s);
 });
@@ -28,11 +28,20 @@ test('looks are cleaned field by field; names up to 10 characters; a side is kep
   assert.deepEqual(fixLook('x', d), d);
 });
 
-test('bad map, tank count, difficulty, mute or style fall back; saved sides are dropped', () => {
-  const s = loadSettings(JSON.stringify({ map: 'Moon', tanks: 3, difficulty: 'Insane', muted: 'yes', style: 'Neon',
+test('bad map, tank count, difficulty, mute or overview fall back; saved sides are dropped', () => {
+  const s = loadSettings(JSON.stringify({ map: 'Moon', tanks: 3, difficulty: 'Insane', muted: 'yes', overview: 'no',
     players: [{ ...defaults().players[0], side: Side.Left }] }));
-  assert.deepEqual([s.map, s.tanks, s.difficulty, s.muted, s.style], [MapId.Random, 2, Difficulty.Normal, false, Style.Normal]);
+  assert.deepEqual([s.map, s.tanks, s.difficulty, s.muted, s.overview], [MapId.Random, 2, Difficulty.Normal, false, true]);
   assert.equal(s.players[0].side, undefined);
+});
+
+test('a save from before Arcade was removed loads in the normal look, keeping everything else (008 FR-012)', () => {
+  const old = { ...defaults(), map: MapId.TimberGap, tanks: 4, muted: true, style: 'arcade' } as Record<string, unknown>;
+  delete old.overview;
+  (old.players as { name: string }[])[0].name = 'Ann';
+  const s = loadSettings(JSON.stringify(old));
+  assert.equal('style' in s, false);
+  assert.deepEqual([s.map, s.tanks, s.muted, s.players[0].name, s.overview], [MapId.TimberGap, 4, true, 'Ann', true]);
 });
 
 test("player 2's colour never matches player 1's", () => {
