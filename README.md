@@ -69,7 +69,7 @@ Content-Security-Policy `connect-src` to allow it.
 Every `hello` carries a private rejoin key for that player's slot. If a player drops while the room is
 locked (a game is on), the relay keeps their slot for that key until the room reopens, and
 `/relay/<game>/<code>?key=<key>` takes them back into it (once per key; specs/007-tank-artillery/contracts/relay-rejoin.md).
-Tank Clash uses it; the other games ignore it.
+Tank Clash and Critter Hop use it; the other games ignore it.
 
 ## Snake Duel
 
@@ -95,6 +95,20 @@ grip gear, or a rare shield). Online uses the shared lobby, rooms of 2 to 10: pl
 switch while it has room, the host picks map, tank count and difficulty; one device (first the host) settles every
 shot, a dropped player's tank goes to a computer, and they can rejoin from the same device ("Rejoin battle").
 Offline, `?seed=<number>` replays the same battle (the browser tests use it).
+
+## Critter Hop
+
+Star checkers for 2, 4 or 6 players on a 3D board (`src/games/critter-hop/`, specs in `specs/012-creature-checkers`).
+Each player picks one of six original creature types (Fire, Water, Grass, Electric, Psychic, Rock); 2 and 6 players
+use a 121-hole star, 4 players a 105-hole cross where moves go in 8 directions. A move is one step, or a chain of hops
+over any creature; types form a ring (Water → Fire → Grass → Rock → Electric → Psychic → Water) where a creature may
+**long hop** over a type it beats from further away and may not hop over a type that beats it. First to fill the far
+home wins; a game ends by itself after 20 rounds in which no creature newly reaches its target (counted once any has).
+Controls: click or tap a creature, then a ringed hole; or the keyboard (arrows move a cursor, Enter selects and moves,
+Esc cancels, H hint, Q/E turn the board, +/− zoom); drag turns and pinch zooms on touch screens. 1 Player is you
+against computer players (Easy, Normal or Hard); 2 Players sets each of 2, 4 or 6 seats to a person or a computer on
+one device; Online uses the shared lobby with rooms of 2, 4 or 6, unique type picks, a 60-second turn timer, and
+rejoin ("Rejoin battle") after a drop. Offline, `?seed=<number>` replays the same computer moves (the browser tests use it).
 
 ## Hosting and deploy
 

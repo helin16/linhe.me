@@ -35,6 +35,17 @@ test('Tank Clash is on the home page and the games page, and its card opens the 
   await expect(page.getByText(/Blast the ground away under your rivals, grab air drops/)).toBeVisible();
 });
 
+test('Critter Hop is on the home page and the games page, and its card opens the game', async ({ page }) => {
+  await page.goto(Route.Home);
+  const card = page.getByRole('link', { name: /Critter Hop/ });
+  await expect(card).toContainText('2, 4 or 6 players · Online · iPad ready');
+  await card.click();
+  await expect(page).toHaveURL(/\/games\/critter-hop\/$/);
+  await expect(page.getByRole('heading', { name: 'Critter Hop' })).toBeVisible();
+  await page.goto(Route.Games);
+  await expect(page.getByText(/long hops over the ones you beat, no hops over the ones that beat you/)).toBeVisible();
+});
+
 test('the home page says Show Ground, with no name in the heading or welcome line', async ({ page }) => {
   await page.goto(Route.Home);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Show Ground');

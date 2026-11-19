@@ -1,0 +1,52 @@
+/* Critter Hop (scoped under .ch; the board fills the screen in either orientation, no page scrolling) */
+.ch{position:fixed;inset:0;overflow:hidden;background:#bfe3ff;color:#fff;font:15px/1.4 system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:none}
+.ch #view{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ch #hud{position:absolute;inset:0;pointer-events:none}
+.ch #hud button{pointer-events:auto}
+.ch button{font:inherit;border:0;border-radius:8px;cursor:pointer;color:#fff;min-height:36px}
+.ch button:disabled{opacity:.45;cursor:default}
+.ch #bar{position:absolute;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:#000a;padding:6px 12px;border-radius:12px;white-space:nowrap;font-weight:700;max-width:calc(100vw - 16px);box-sizing:border-box}
+.ch #whoseTurn{text-shadow:0 1px 2px #000;overflow:hidden;text-overflow:ellipsis}
+.ch #timer{font-family:ui-monospace,monospace;font-size:18px;min-width:2ch;text-align:center}
+.ch #bar button{background:#ffffff26;padding:4px 10px}
+.ch #hintBtn{background:#3fbf4f!important}
+.ch #mute{background:none!important;font-size:18px}
+.ch #seatList{position:absolute;top:calc(56px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));margin:0;padding:6px 8px;list-style:none;background:#000a;border-radius:10px;font-size:13px}
+.ch #seatList li{display:flex;gap:6px;align-items:center;padding:1px 4px;border-radius:6px;border:2px solid transparent}
+.ch #seatList li.now{border-color:#ffeb3b}
+.ch .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.ch #stallInfo{position:absolute;bottom:calc(44px + env(safe-area-inset-bottom));width:100%;text-align:center;font-size:13px;text-shadow:0 1px 3px #000}
+.ch #msg{position:absolute;top:24%;width:100%;text-align:center;font-size:28px;font-weight:900;text-shadow:0 2px 8px #000;padding:0 16px;box-sizing:border-box}
+.ch #status{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));width:100%;text-align:center;font-size:14px;text-shadow:0 1px 3px #000}
+/* the move buttons: for screen readers and keyboards, not drawn (taps on the board do the same) */
+.ch #spots{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+.ch #setup{position:absolute;top:50%;left:16px;transform:translateY(-50%);background:#000c;padding:16px 20px;border-radius:14px;width:340px;max-width:calc(100vw - 32px);box-sizing:border-box;max-height:calc(100vh - 32px);overflow:auto;display:none;flex-direction:column;gap:10px;touch-action:pan-y}
+.ch #setup h1{margin:0;font-size:26px}
+.ch #setup small{opacity:.75}
+.ch .opt{background:#333;padding:5px 10px;margin:4px 4px 0 0}
+.ch .opt.on{background:#ffb300;color:#000}
+.ch #cSeats{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.ch #cSeats li{display:flex;justify-content:space-between}
+.ch #cSeats .kind{min-width:96px}
+.ch #cTypes{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-top:4px}
+.ch .type{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:6px 8px;background:#222;border:3px solid var(--c);line-height:1.25}
+.ch .type b{color:var(--c);font-size:15px}
+.ch .type small{font-size:11px;opacity:.85}
+.ch .type[aria-pressed=true]{background:var(--c);color:#000}
+.ch .type[aria-pressed=true] b{color:#000}
+.ch #takenNote{font-size:13px;color:#ffcc00}
+.ch #timerRow{display:flex;gap:8px;align-items:center}
+.ch #keys{font-size:12px;opacity:.75}
+.ch #go{background:#ffb300;color:#000;font-weight:800;padding:10px;font-size:17px}
+.ch #go:disabled{background:#555;color:#aaa}
+.ch #end{position:absolute;inset:0;display:none;place-items:center;background:#0008}
+.ch #end>div{background:#222;padding:22px 30px;border-radius:12px;font-size:18px;line-height:1.6;text-align:center;max-width:calc(100vw - 32px);box-sizing:border-box}
+.ch #end b{font-size:24px}
+.ch #end ol{text-align:left;margin:8px 0}
+.ch #end button{background:#ffb300;color:#000;padding:6px 14px;margin:8px 4px 0}
+@media (max-width:640px),(max-height:480px){
+  .ch #bar{gap:6px;padding:4px 8px;font-size:13px}
+  .ch #bar button{padding:2px 8px}
+  .ch #seatList{font-size:11px;top:calc(48px + env(safe-area-inset-top))}
+  .ch #msg{font-size:22px}
+}

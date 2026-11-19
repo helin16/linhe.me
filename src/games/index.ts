@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 
-export const GameSlug = { TurboTumble: 'turbo-tumble', SnakeDuel: 'snake-duel', TankClash: 'tank-clash' } as const;
+export const GameSlug = { TurboTumble: 'turbo-tumble', SnakeDuel: 'snake-duel', TankClash: 'tank-clash', CritterHop: 'critter-hop' } as const;
 export type GameSlug = typeof GameSlug[keyof typeof GameSlug];
 
 // The one games list: the home page, the games page and the router all read it.
@@ -48,5 +48,16 @@ export const games: GameEntry[] = [
     tag: 'Keyboard or touch · 1–2 players · online up to 10',
     art: '💥',
     load: () => import('./tank-clash/index.tsx'),
+  },
+  {
+    slug: GameSlug.CritterHop,
+    name: 'Critter Hop',
+    summary: 'Hop your creatures across a 3D star board.',
+    description:
+      'Pick a creature type and race your ten critters to the far side of a 3D star board, stepping and hopping over others. Each type is strong against one other and weak against another: long hops over the ones you beat, no hops over the ones that beat you. Play 2, 4 or 6 players on one device against the computer, or online in a room.',
+    homeTag: '2, 4 or 6 players · Online · iPad ready',
+    tag: 'Mouse, keyboard or touch · 2, 4 or 6 players · online up to 6',
+    art: '🐾',
+    load: () => import('./critter-hop/index.tsx'),
   },
 ];
