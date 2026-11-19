@@ -11,6 +11,7 @@ import { PlayerMode } from './shared/modes.ts';
 import * as Snake from './games/snake-duel/enums.ts';
 import * as Tank from './games/tank-clash/enums.ts';
 import * as Hop from './games/critter-hop/enums.ts';
+import * as Chess from './games/critter-chess/enums.ts';
 import { KartStyle, Track } from './games/turbo-tumble/settings.ts';
 import { values } from './shared/enum.ts';
 import { Route } from './shared/routes.ts';
@@ -24,7 +25,10 @@ const enums: Record<string, Record<string, string>> = { Route, GameSlug, Track, 
   Phase: Tank.Phase, TankMsg: Tank.TankMsg, TankTab: Tank.TankTab, TankScreen: Tank.Screen, TankResultAction: Tank.ResultAction, Hold: Tank.Hold, Variant: Tank.Variant, CameraMode: Tank.CameraMode, GroundPart: Tank.GroundPart,
   CritterType: Hop.CritterType, BoardKind: Hop.BoardKind, SeatKind: Hop.SeatKind, HopDifficulty: Hop.Difficulty, HopKind: Hop.HopKind,
   GameState: Hop.GameState, EndWhy: Hop.EndWhy, HopSpeed: Hop.HopSpeed, HopMsg: Hop.HopMsg, HopScreen: Hop.Screen, HopResultAction: Hop.ResultAction,
-  Ears: Hop.Ears, HopEffect: Hop.HopEffect, MoveWord: Hop.MoveWord };
+  Ears: Hop.Ears, HopEffect: Hop.HopEffect, MoveWord: Hop.MoveWord,
+  ChessCritterType: Chess.CritterType, ChessSeatKind: Chess.SeatKind, ChessDifficulty: Chess.Difficulty, ChessBoardKind: Chess.BoardKind, PieceKind: Chess.PieceKind, ChessSeatState: Chess.SeatState, ChessGameState: Chess.GameState,
+  ChessEndWhy: Chess.EndWhy, ChessEars: Chess.ChessEars, ChessEffect: Chess.ChessEffect, MoveSpeed: Chess.MoveSpeed, ChessMsg: Chess.ChessMsg,
+  ChessScreen: Chess.Screen, ChessResultAction: Chess.ResultAction };
 // the one file allowed to hold each enum's definition
 const home: Record<string, string> = {
   RelayMsg: '../relay/protocol.ts',
@@ -33,6 +37,7 @@ const home: Record<string, string> = {
   ...Object.fromEntries(['SnakePattern', 'SnakeEyes', 'MatchType', 'Difficulty', 'SnakeMsg', 'MatchState', 'SnakeTab', 'Screen', 'ResultAction'].map(n => [n, 'games/snake-duel/enums.ts'])),
   ...Object.fromEntries(['TankType', 'MapId', 'Side', 'Grip', 'Drop', 'TankDifficulty', 'Phase', 'TankMsg', 'TankTab', 'TankScreen', 'TankResultAction', 'Hold', 'Variant', 'CameraMode', 'GroundPart'].map(n => [n, 'games/tank-clash/enums.ts'])),
   ...Object.fromEntries(['CritterType', 'BoardKind', 'SeatKind', 'HopDifficulty', 'HopKind', 'GameState', 'EndWhy', 'HopSpeed', 'HopMsg', 'HopScreen', 'HopResultAction', 'Ears', 'HopEffect', 'MoveWord'].map(n => [n, 'games/critter-hop/enums.ts'])),
+  ...Object.fromEntries(['ChessCritterType', 'ChessSeatKind', 'ChessDifficulty', 'ChessBoardKind', 'PieceKind', 'ChessSeatState', 'ChessGameState', 'ChessEndWhy', 'ChessEars', 'ChessEffect', 'MoveSpeed', 'ChessMsg', 'ChessScreen', 'ChessResultAction'].map(n => [n, 'games/critter-chess/enums.ts'])),
   ...Object.fromEntries(['RaceState', 'MsgType', 'Item', 'Action', 'EditTab', 'EndAction', 'RoadKind', 'GroundKind', 'LightKind', 'LayerKind', 'Effect', 'PuffKind'].map(n => [n, 'games/turbo-tumble/enums.ts'])),
 };
 // value → files where it may still appear written out, with the reason
@@ -42,6 +47,7 @@ const allowed: Record<string, string[]> = {
   '/': ['shared/router.tsx', '../relay/protocol.ts'], // URL path syntax (slashes), not the home route
   full: ['../relay/rooms.ts', '../relay/server.ts'], // a room being full, not the detail level
   Rocket: ['../relay/names.ts'], // a word for room names, not the kart style
+  Rook: ['games/turbo-tumble/game.ts'], // a computer driver's name, not the chess piece
   room: ['shared/online/client.ts'], // the join link's query key (ROOM_QUERY), not the relay's room frame
 };
 
@@ -54,7 +60,9 @@ const files = [...list('.', ''), ...list('../relay', '../relay/')];
 // an enum definition (`export const Name = { ... } as const`), blanked only in that enum's own file
 // enums registered under another name than they are exported with (two games each have a Difficulty)
 const exported: Record<string, string> = { TankDifficulty: 'Difficulty', TankScreen: 'Screen', TankResultAction: 'ResultAction',
-  HopDifficulty: 'Difficulty', HopScreen: 'Screen', HopResultAction: 'ResultAction' };
+  HopDifficulty: 'Difficulty', HopScreen: 'Screen', HopResultAction: 'ResultAction',
+  ChessCritterType: 'CritterType', ChessSeatKind: 'SeatKind', ChessDifficulty: 'Difficulty', ChessBoardKind: 'BoardKind', ChessSeatState: 'SeatState', ChessGameState: 'GameState', ChessEndWhy: 'EndWhy', ChessScreen: 'Screen',
+  ChessResultAction: 'ResultAction' };
 const definition = (name: string) => new RegExp(`export const ${exported[name] ?? name} = \\{[^}]*\\} as const`, 'g');
 // the value as a whole quoted string, or at the start of a template string (`/games/${slug}`)
 const quoted = (v: string) => new RegExp(`(['"\`])${v.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}(\\1|\\$\\{)`);

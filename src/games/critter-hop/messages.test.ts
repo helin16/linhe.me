@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CritterType as T, Difficulty, GameState, HopMsg, SeatKind } from './enums.ts';
-import { allowedFrom, freeType, fromSync, nextRunner, parseMessage, roomSeats, seatSpecs, syncMsg, takeType, type Msg, type SeatRow } from './messages.ts';
+import { allowedFrom, fromSync, parseMessage, seatSpecs, syncMsg, type Msg, type SeatRow } from './messages.ts';
 import { applyMove, movesOf, newGame } from './rules.ts';
-import { seeded } from './seed.ts';
 
 const seats: SeatRow[] = [[0, 0, T.Fire], [1, -1, T.Water]];
 const ok = (m: object) => parseMessage({ from: 1, ...m });
+const rowsOf = (g: { seats: { id: number; slot: number; type: T }[] }) => g.seats.map(s => [s.id, s.slot, s.type] as SeatRow);
 
 test('well-formed messages pass', () => {
   assert.ok(ok({ t: HopMsg.Pick, type: T.Rock }));
@@ -15,7 +15,7 @@ test('well-formed messages pass', () => {
   assert.ok(ok({ t: HopMsg.Turn, seat: 1, left: 60000, round: 3, stall: 0 }));
   assert.ok(ok({ t: HopMsg.Move, seat: 0, piece: 3, path: [10, 20, 30] }));
   const g = newGame(seatSpecs(seats));
-  assert.ok(parseMessage({ ...syncMsg(g, 7, 1234), from: 0 }));
+  assert.ok(parseMessage({ ...syncMsg(g, 7, 1234, rowsOf(g)), from: 0 }));
 });
 
 test('malformed messages are dropped', () => {
@@ -31,9 +31,20 @@ test('malformed messages are dropped', () => {
     { t: HopMsg.Move, seat: 0, piece: 99, path: [1, 2] }, { t: HopMsg.Move, seat: 0, piece: 1, path: [1, 999] },
     { t: HopMsg.Sync, seed: 1, seats, holes: [], flags: [], order: [0, 0], progress: 0, turn: { seat: 0, left: 0, round: 1, stall: 0 } },
   ]) assert.equal(ok(m), null, JSON.stringify(m));
-  const g = newGame(seatSpecs(seats)), sync = { ...syncMsg(g, 7, 0), from: 0 };
+  const g = newGame(seatSpecs(seats)), sync = { ...syncMsg(g, 7, 0, rowsOf(g)), from: 0 };
   for (const change of [{ holes: sync.holes.slice(1) }, { holes: sync.holes.map(() => 0) }, { flags: [] }, { progress: 2 },
     { turn: { ...sync.turn, seat: 5 } }, { order: [5, 0] }, { turn: null }, { seed: 'x' }]) assert.equal(parseMessage({ ...sync, ...change }), null, JSON.stringify(change).slice(0, 40));
+});
+
+test('sync: the seats as the game began, and who plays each now (a computer stands in for a dropped player)', () => {
+  const begun: SeatRow[] = [[0, 0, T.Fire], [1, 3, T.Water]], g = newGame(seatSpecs(begun));
+  g.seats[1].slot = -1; g.seats[1].kind = SeatKind.Computer; // seat 1's player dropped
+  const m = parseMessage({ ...syncMsg(g, 1, 0, begun), from: 0 }) as Extract<Msg, { t: typeof HopMsg.Sync }>;
+  assert.deepEqual(m.seats, begun, 'the rejoiner keeps the original seats, to hand seat 1 back later');
+  const back = fromSync(m);
+  assert.equal(back.seats[1].kind, SeatKind.Computer);
+  assert.equal(back.seats[1].slot, -1);
+  assert.equal(parseMessage({ ...syncMsg(g, 1, 0, begun), now: [0], from: 0 }), null, 'one entry per seat');
 });
 
 test('who may send what', () => {
@@ -50,37 +61,15 @@ test('who may send what', () => {
   assert.ok(!allowedFrom(m(HopMsg.Move, 2), 1, 0, 3));
 });
 
-test('runner hand-over and type picks', () => {
-  assert.equal(nextRunner(2, [0, 2, 5]), 2);
-  assert.equal(nextRunner(2, [3, 5]), 3);
-  assert.equal(nextRunner(2, []), -1);
-  const types = new Map<number, T>();
-  assert.ok(takeType(types, 0, T.Water));
-  assert.ok(!takeType(types, 1, T.Water), 'taken');
-  assert.ok(takeType(types, 0, T.Fire), 'changing your own pick');
-  assert.ok(takeType(types, 1, T.Water));
-  const r = seeded(1);
-  for (let i = 0; i < 20; i++) assert.ok(!([T.Fire, T.Water] as T[]).includes(freeType([T.Fire, T.Water], r)));
-});
-
-test('room seats: players in slot order with their picks, free types for the rest, computers fill up', () => {
-  const rows = roomSeats([4, 0], new Map([[0, T.Water], [4, T.Grass]]), 4, seeded(2));
-  assert.deepEqual(rows.slice(0, 2), [[0, 0, T.Water], [1, 4, T.Grass]]);
-  assert.deepEqual(rows.slice(2).map(r => r[1]), [-1, -1]);
-  assert.equal(new Set(rows.map(r => r[2])).size, 4);
-  // a clash (can't normally happen): the lower slot keeps it, the other gets a free one; no pick → free
-  const clash = roomSeats([0, 1, 2], new Map([[0, T.Fire], [1, T.Fire]]), 6, seeded(3));
-  assert.equal(clash[0][2], T.Fire);
-  assert.notEqual(clash[1][2], T.Fire);
-  assert.equal(new Set(clash.map(r => r[2])).size, 6);
-  assert.deepEqual(seatSpecs(rows).map(s => s.kind), [SeatKind.Person, SeatKind.Person, SeatKind.Computer, SeatKind.Computer]);
+test('seat kinds: a slot plays a person seat, −1 a computer', () => {
+  assert.deepEqual(seatSpecs([[0, 0, T.Water], [1, 4, T.Grass], [2, -1, T.Fire]]).map(s => s.kind), [SeatKind.Person, SeatKind.Person, SeatKind.Computer]);
 });
 
 test('sync carries the whole game: a rejoiner gets the same board, flags, places and turn', () => {
   const g = newGame(seatSpecs([[0, 0, T.Fire], [1, 3, T.Water], [2, -1, T.Grass], [3, -1, T.Rock]]));
   for (let i = 0; i < 9; i++) applyMove(g, movesOf(g, g.turn)[0]);
   g.seats[2].place = 1; g.order = [2]; g.pieces[5].arrived = true;
-  const back = fromSync(parseMessage({ ...syncMsg(g, 11, 4321), from: 0 }) as Extract<Msg, { t: typeof HopMsg.Sync }>);
+  const back = fromSync(parseMessage({ ...syncMsg(g, 11, 4321, rowsOf(g)), from: 0 }) as Extract<Msg, { t: typeof HopMsg.Sync }>);
   assert.deepEqual(back.pieces.map(p => [p.hole, p.left, p.arrived]), g.pieces.map(p => [p.hole, p.left, p.arrived]));
   assert.deepEqual([...back.occupant], [...g.occupant]);
   assert.deepEqual([back.turn, back.round, back.stall, back.progress, back.order, back.state], [g.turn, g.round, g.stall, g.progress, g.order, GameState.Playing]);

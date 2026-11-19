@@ -110,6 +110,19 @@ against computer players (Easy, Normal or Hard); 2 Players sets each of 2, 4 or 
 one device; Online uses the shared lobby with rooms of 2, 4 or 6, unique type picks, a 60-second turn timer, and
 rejoin ("Rejoin battle") after a drop. Offline, `?seed=<number>` replays the same computer moves (the browser tests use it).
 
+## Critter Chess
+
+Real chess for 2, 4 or 6 players on a 3D board (`src/games/critter-chess/`, specs in `specs/013-creature-chess`): the
+standard 8 × 8 board for 2, the 160-cell cross for 4, and a 397-cell hexagon (side 12) for 6, every army the full 16
+pieces. Each player picks one of six creature types, which only changes how their army looks. Standard rules on the
+square boards (castling; en passant with 2 players; promotion on the far rank, or the middle line on the cross); on the
+hexagon, hex-chess moves (six straight and six diagonal lines, a 12-way knight), pawns stepping straight ahead and
+capturing to the front sides, no castling. With 4 or 6, a mated or resigned player is out (a king left exposed can be
+taken) and the last king standing wins; stalemate skips a turn. Controls as in Critter Hop (click or tap, arrows +
+Enter, Esc, H hint, Q/E turn, +/− zoom, drag and pinch). 1 Player, 2 Players (2, 4 or 6 seats, each a person or a
+computer) and Online (shared lobby, unique types, 60 seconds a move, rejoin). Computer players: Easy, Normal, Hard.
+Offline, `?seed=<number>` replays the same computer moves (the browser tests use it).
+
 ## Hosting and deploy
 
 The site runs on a VPS (Ubuntu) behind Cloudflare (proxied, SSL mode Full (strict)). Caddy serves

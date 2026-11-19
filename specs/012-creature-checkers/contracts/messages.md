@@ -12,7 +12,7 @@ sender, or (for `move`) not in `legalMoves` is dropped.
 | `begin` | runner | `seed`, `seats: [seatId, slot or −1, CritterType][]` | the game starts; every device builds the same board, seats and pieces; the seed drives computer choices |
 | `turn` | runner | `seat`, `left` (ms), `round`, `stall` | a turn starts (devices count down locally) |
 | `move` | the slot owning the seat in turn; the runner for computer seats and timeouts | `seat`, `piece`, `path: number[]` (≤ 2 + 121 holes) | a move; every device checks and applies it |
-| `sync` | runner | `seed`, `seats` (as `begin`, with the rejoiner's slot back on its seat), `holes: number[]` (one per creature), `flags: number[]` (1 = has left home, 2 = has reached its target), `order` (places so far), `progress` (0/1), `turn` (as `turn`) | everything so far, for a player rejoining mid-game |
+| `sync` | runner | `seed`, `seats` (as `begin`: who each seat began with), `now` (the slot playing each seat now, −1 for a computer), `holes: number[]` (one per creature), `flags: number[]` (1 = has left home, 2 = has reached its target), `order` (places so far), `progress` (0/1), `turn` (as `turn`) | everything so far, for a player rejoining mid-game |
 
 Drops and rejoins need no message of their own: every device sees the relay's `leave` and `join` frames and
 gives a dropped player's seat to a computer (or back to them) itself, using the seats from `begin`. The end

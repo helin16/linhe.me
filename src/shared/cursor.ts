@@ -1,5 +1,5 @@
-// The keyboard cursor (FR-019, research R8): arrow keys jump between candidate holes (your creatures, then the holes the
-// selected one can reach) by where they are on screen, so it works the same on the star and the cross at any camera angle.
+// The keyboard cursor (Critter Hop, Critter Chess; FR-019): arrow keys jump between candidate cells (your pieces, then the
+// cells the selected one can reach) by where they are on screen, so it works on any board at any camera angle.
 
 export type Spot = { id: number; x: number; y: number }; // screen position, y down
 /** The arrow keys' screen directions (keys by `KeyboardEvent.code`). */

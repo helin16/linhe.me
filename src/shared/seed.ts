@@ -1,6 +1,6 @@
-// Seeded randomness (research R9): the same seed gives the same computer moves and types, so offline games replay and
-// the browser tests can play exact games without any test-only code in the build.
-import { SEED_QUERY } from './constants.ts';
+// Seeded randomness shared by Critter Hop and Critter Chess: the same seed gives the same computer moves, so offline games
+// replay and the browser tests can play exact games without any test-only code in the build.
+export const SEED_QUERY = 'seed'; // ?seed=<number>
 
 /** A random source: numbers in [0, 1). */
 export type Random = () => number;

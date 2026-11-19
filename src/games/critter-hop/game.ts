@@ -13,12 +13,13 @@ import {
   BOT_DELAY_MS, COUNTDOWN_MS, DEFAULT_ROOM_SIZE, FAST_FACTOR, FLASH_MS, HOP_MS, MAX_SEED, PIECES, PLAYER_COUNTS, REJOIN_MS, ROOM_SIZES,
   PENDING_MS, SPOTS_S, STALL_ROUNDS, STALL_WARN, TAP_PX, TURN_MS,
 } from './constants.ts';
-import { ARROWS, nextSpot, type Spot } from './cursor.ts';
+import { ARROWS, nextSpot, type Spot } from '../../shared/cursor.ts';
 import { CritterType, Difficulty, EndWhy, GameState, HopKind, HopMsg, HopSpeed, MoveWord, ResultAction, Screen, SeatKind } from './enums.ts';
-import { allowedFrom, fromSync, nextRunner, parseMessage, roomSeats, seatSpecs, syncMsg, takeType, type Msg, type SeatRow } from './messages.ts';
+import { allowedFrom, fromSync, parseMessage, seatSpecs, syncMsg, type Msg, type SeatRow } from './messages.ts';
+import { nextRunner, roomSeats, takeType } from '../../shared/online/seats.ts';
 import { applyMove, endNow, findMove, inTarget, legalMoves, newGame, type Game, type Move, type Seat } from './rules.ts';
 import { createScene, type RingKind } from './scene.ts';
-import { gameSetup, seeded, type Random } from './seed.ts';
+import { gameSetup, seeded, type Random } from '../../shared/seed.ts';
 import { loadSaved, saveSettings, uniqueTypes } from './settings.ts';
 import { createSound } from './sound.ts';
 import { beatenBy, BEATS, LOOKS } from './types.ts';
@@ -441,7 +442,7 @@ export function mount(root: HTMLElement): () => void {
     if (!lobby.isHost() || !net) return;
     lobby.lock(); runner = net.slot;
     seed = Math.floor(Math.random() * MAX_SEED);
-    rows = roomSeats(slots(), types, net.size, Math.random);
+    rows = roomSeats(values(CritterType), slots(), types, net.size, Math.random);
     send({ t: HopMsg.Begin, seed, seats: rows });
     begin();
   }
@@ -459,7 +460,7 @@ export function mount(root: HTMLElement): () => void {
     if (!s || g!.state !== GameState.Playing) return;
     s.kind = SeatKind.Person; s.slot = slot;
     flash(`${seatLabel(s)} is back`);
-    if (iRun()) send(syncMsg(g!, seed, turnEnds ? Math.max(0, turnEnds - Date.now()) : TURN_MS));
+    if (iRun()) send(syncMsg(g!, seed, turnEnds ? Math.max(0, turnEnds - Date.now()) : TURN_MS, rows));
     if (s.id === g!.turn && !busy) nextTurn();
     refresh();
   }

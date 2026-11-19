@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 
-export const GameSlug = { TurboTumble: 'turbo-tumble', SnakeDuel: 'snake-duel', TankClash: 'tank-clash', CritterHop: 'critter-hop' } as const;
+export const GameSlug = { TurboTumble: 'turbo-tumble', SnakeDuel: 'snake-duel', TankClash: 'tank-clash', CritterHop: 'critter-hop', CritterChess: 'critter-chess' } as const;
 export type GameSlug = typeof GameSlug[keyof typeof GameSlug];
 
 // The one games list: the home page, the games page and the router all read it.
@@ -59,5 +59,16 @@ export const games: GameEntry[] = [
     tag: 'Mouse, keyboard or touch · 2, 4 or 6 players · online up to 6',
     art: '🐾',
     load: () => import('./critter-hop/index.tsx'),
+  },
+  {
+    slug: GameSlug.CritterChess,
+    name: 'Critter Chess',
+    summary: 'Chess for 2, 4 or 6 with creature armies.',
+    description:
+      'Real chess with armies of creatures: two players on the classic board, four on the cross-shaped board, or six on a big hexagon. Pick one of six creature types to dress your army, then play against the computer, with friends on one device, or online in a room. The last king standing wins.',
+    homeTag: '2, 4 or 6 players · Online · iPad ready',
+    tag: 'Mouse, keyboard or touch · 2, 4 or 6 players · online up to 6',
+    art: '♞',
+    load: () => import('./critter-chess/index.tsx'),
   },
 ];

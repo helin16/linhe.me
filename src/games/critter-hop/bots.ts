@@ -5,7 +5,7 @@ import { distance } from './boards.ts';
 import { BLOCK_BONUS, EASY_STEP_CHANCE, EASY_TOP, FOLLOW_WEIGHT, REAR_BONUS, ROW_WEIGHT } from './constants.ts';
 import { Difficulty, HopKind } from './enums.ts';
 import { movesOf, type Game, type Move } from './rules.ts';
-import type { Random } from './seed.ts';
+import type { Random } from '../../shared/seed.ts';
 
 /** How far a hole is from a seat's target: rows to go first; outside the target, also the steps to the nearest hole
  *  of it not yet holding one of the seat's own creatures (so the last ones head for the gaps, not the tip). */

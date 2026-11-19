@@ -2,15 +2,14 @@
 // what, type picks in the waiting room, and a game turned into messages and back. Every device checks every move with
 // the rules; the runner (first the host) speaks for computer seats, timeouts, drops and rejoins (research R5–R6).
 import { isSlot } from '../../../relay/protocol.ts';
-import { isMember, values } from '../../shared/enum.ts';
+import { isMember } from '../../shared/enum.ts';
+import type { SeatRow as Shared } from '../../shared/online/seats.ts';
 import { boardFor } from './boards.ts';
 import { MAX_SEED, PIECES, PLAYER_COUNTS, TURN_MS } from './constants.ts';
 import { CritterType, Difficulty, GameState, HopMsg, SeatKind } from './enums.ts';
 import { newGame, type Game, type SeatSpec } from './rules.ts';
-import type { Random } from './seed.ts';
 
-/** A seat as sent: seat id, the slot playing it (−1: a computer), its type. */
-export type SeatRow = [number, number, CritterType];
+export type SeatRow = Shared<CritterType>; // seat id, the slot playing it (−1: a computer), its type
 export type TurnInfo = { seat: number; left: number; round: number; stall: number }; // round and stall: for a rejoiner
 export type Msg =
   | { t: typeof HopMsg.Pick; from: number; type: CritterType }
@@ -18,7 +17,7 @@ export type Msg =
   | { t: typeof HopMsg.Begin; from: number; seed: number; seats: SeatRow[] }
   | ({ t: typeof HopMsg.Turn; from: number } & TurnInfo)
   | { t: typeof HopMsg.Move; from: number; seat: number; piece: number; path: number[] }
-  | { t: typeof HopMsg.Sync; from: number; seed: number; seats: SeatRow[]; holes: number[]; flags: number[]; order: number[];
+  | { t: typeof HopMsg.Sync; from: number; seed: number; seats: SeatRow[]; now: number[]; holes: number[]; flags: number[]; order: number[];
       progress: number; turn: TurnInfo };
 
 const MAX_SEATS = Math.max(...PLAYER_COUNTS);
@@ -51,7 +50,7 @@ export function parseMessage(raw: unknown): Msg | null {
     case HopMsg.Turn: return turnOk(m) ? raw as Msg : null;
     case HopMsg.Move: return int(m.seat, 0, MAX_SEATS) && int(m.piece, 0, MAX_SEATS * PIECES) && pathOk(m.path) ? raw as Msg : null;
     case HopMsg.Sync: {
-      if (!int(m.seed, 0, MAX_SEED) || !seatRows(m.seats)) return null;
+      if (!int(m.seed, 0, MAX_SEED) || !seatRows(m.seats) || !(list(m.now, MAX_SEATS, x => x === -1 || isSlot(x)) && (m.now as unknown[]).length === m.seats.length)) return null;
       const n = m.seats.length, t = m.turn as Record<string, unknown> | null;
       return holesOk(m.holes, n) && list(m.flags, n * PIECES, f => int(f, 0, 4)) && (m.flags as unknown[]).length === n * PIECES
         && orderOk(m.order, n) && (m.progress === 0 || m.progress === 1) && !!t && typeof t === 'object' && turnOk(t, n) ? raw as Msg : null;
@@ -69,39 +68,16 @@ export function allowedFrom(m: Msg, runner: number, host: number, turnSlot: numb
   return m.from === runner;
 }
 
-/** The next runner: the same one while it's in the room, else the lowest slot. */
-export const nextRunner = (runner: number, slots: number[]) => slots.includes(runner) ? runner : slots[0] ?? -1;
 
-/** The host settles type picks: a slot gets a type unless another slot already has it (first come wins, FR-014). */
-export function takeType(types: Map<number, CritterType>, slot: number, type: CritterType) {
-  if ([...types].some(([s, t]) => s !== slot && t === type)) return false;
-  types.set(slot, type);
-  return true;
-}
-/** A random type nobody has. */
-export function freeType(taken: CritterType[], random: Random) {
-  const free = values(CritterType).filter(t => !taken.includes(t));
-  return free[Math.floor(random() * free.length)];
-}
 
-/** The seats for a room's game: its players by slot (a player without a type gets a free one), then computer seats with
- *  the types left, `size` seats in all. */
-export function roomSeats(slots: number[], types: Map<number, CritterType>, size: number, random: Random): SeatRow[] {
-  const players = [...slots].sort((a, b) => a - b).slice(0, size), mine: (CritterType | undefined)[] = [];
-  for (const slot of players) { const t = types.get(slot); mine.push(t && !mine.includes(t) ? t : undefined); } // picks, first slot wins
-  const taken = () => mine.filter((t): t is CritterType => !!t);
-  mine.forEach((t, i) => { if (!t) mine[i] = freeType(taken(), random); }); // no pick yet: a free one
-  while (mine.length < size) mine.push(freeType(taken(), random));        // computer seats
-  return mine.map((t, i) => [i, players[i] ?? -1, t!]);
-}
 /** The seats as the rules take them. */
 export const seatSpecs = (rows: SeatRow[]): SeatSpec[] =>
   rows.map(([, slot, type]) => ({ kind: slot < 0 ? SeatKind.Computer : SeatKind.Person, type, slot }));
 
 /** Everything so far, for a player rejoining mid-game. */
-export function syncMsg(g: Game, seed: number, left: number) {
+export function syncMsg(g: Game, seed: number, left: number, begun: SeatRow[]) { // the seats as the game began; who plays them now
   return {
-    t: HopMsg.Sync, seed, seats: g.seats.map(s => [s.id, s.slot, s.type] as SeatRow),
+    t: HopMsg.Sync, seed, seats: begun, now: g.seats.map(s => s.slot),
     holes: g.pieces.map(p => p.hole), flags: g.pieces.map(p => (p.left ? LEFT : 0) | (p.arrived ? ARRIVED : 0)),
     order: g.order, progress: +g.progress, turn: { seat: g.turn, left: Math.round(left), round: g.round, stall: g.stall },
   };
@@ -109,6 +85,7 @@ export function syncMsg(g: Game, seed: number, left: number) {
 /** The game a sync describes. */
 export function fromSync(m: Extract<Msg, { t: typeof HopMsg.Sync }>): Game {
   const g = newGame(seatSpecs(m.seats));
+  g.seats.forEach((s, i) => { s.slot = m.now[i]; s.kind = m.now[i] < 0 ? SeatKind.Computer : SeatKind.Person; });
   g.occupant.fill(-1);
   g.pieces.forEach((p, i) => { p.hole = m.holes[i]; g.occupant[p.hole] = p.id; p.left = !!(m.flags[i] & LEFT); p.arrived = !!(m.flags[i] & ARRIVED); });
   m.order.forEach((s, i) => { g.seats[s].place = i + 1; }); // seats checked by parseMessage

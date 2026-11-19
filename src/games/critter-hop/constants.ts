@@ -27,7 +27,6 @@ export const BOT_DELAY_MS = 500;          // a computer move waits this long so 
 export const HOP_MS = 260;                // one segment of a move's animation at normal speed
 export const FAST_FACTOR = 5;             // Fast hop speed (FR-023)
 
-export const SEED_QUERY = 'seed';
 export const MAX_SEED = 2 ** 31;         // game seeds are below this (sent online: the host's and the guests' check agree)
 export const FLASH_MS = 2500;            // banners show this long
 export const TAP_PX = 8;                 // a pointer that moved less than this is a tap, not a turn of the board

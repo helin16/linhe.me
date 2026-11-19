@@ -1,0 +1,58 @@
+/* Critter Chess (scoped under .cc; the board fills the screen in either orientation, no page scrolling) */
+.cc{position:fixed;inset:0;overflow:hidden;background:#bfe3ff;color:#fff;font:15px/1.4 system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:none}
+.cc #view{position:absolute;inset:0;width:100%;height:100%;display:block}
+.cc #hud{position:absolute;inset:0;pointer-events:none}
+.cc #hud button{pointer-events:auto}
+.cc button{font:inherit;border:0;border-radius:8px;cursor:pointer;color:#fff;min-height:36px}
+.cc button:disabled{opacity:.45;cursor:default}
+.cc #bar{position:absolute;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:#000a;padding:6px 12px;border-radius:12px;white-space:nowrap;font-weight:700;max-width:calc(100vw - 16px);box-sizing:border-box}
+.cc #whoseTurn{text-shadow:0 1px 2px #000;overflow:hidden;text-overflow:ellipsis}
+.cc #timer{font-family:ui-monospace,monospace;font-size:18px;min-width:2ch;text-align:center}
+.cc #bar button{background:#ffffff26;padding:4px 10px}
+.cc #hintBtn{background:#3fbf4f!important}
+.cc #resignBtn{background:#b23a3a!important}
+.cc #moveList{position:absolute;top:calc(56px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));margin:0;padding:6px 10px 6px 26px;background:#000a;border-radius:10px;font-size:12px;max-width:min(260px,40vw);max-height:40vh;overflow:auto}
+.cc #moveList:empty{display:none}
+.cc #checkInfo{position:absolute;bottom:calc(44px + env(safe-area-inset-bottom));width:100%;text-align:center;font-size:18px;font-weight:900;color:#ff6b6b;text-shadow:0 1px 3px #000}
+.cc #promo{position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:10px;background:#0008;pointer-events:auto;flex-wrap:wrap;padding:16px}
+.cc #promo button{background:#ffb300;color:#000;font-weight:800;padding:12px 18px;font-size:18px;pointer-events:auto}
+.cc #mute{background:none!important;font-size:18px}
+.cc #seatList{position:absolute;top:calc(56px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));margin:0;padding:6px 8px;list-style:none;background:#000a;border-radius:10px;font-size:13px}
+.cc #seatList li{display:flex;gap:6px;align-items:center;padding:1px 4px;border-radius:6px;border:2px solid transparent}
+.cc #seatList li.now{border-color:#ffeb3b}
+.cc #seatList li.gone{opacity:.5;text-decoration:line-through}
+.cc .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.cc #msg{position:absolute;top:24%;width:100%;text-align:center;font-size:28px;font-weight:900;text-shadow:0 2px 8px #000;padding:0 16px;box-sizing:border-box}
+.cc #status{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));width:100%;text-align:center;font-size:14px;text-shadow:0 1px 3px #000}
+/* the move buttons: for screen readers and keyboards, not drawn (taps on the board do the same) */
+.cc #spots{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+.cc #setup{position:absolute;top:50%;left:16px;transform:translateY(-50%);background:#000c;padding:16px 20px;border-radius:14px;width:340px;max-width:calc(100vw - 32px);box-sizing:border-box;max-height:calc(100vh - 32px);overflow:auto;display:none;flex-direction:column;gap:10px;touch-action:pan-y}
+.cc #setup h1{margin:0;font-size:26px}
+.cc #setup small{opacity:.75}
+.cc .opt{background:#333;padding:5px 10px;margin:4px 4px 0 0}
+.cc .opt.on{background:#ffb300;color:#000}
+.cc #cSeats{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.cc #cSeats li{display:flex;justify-content:space-between}
+.cc #cSeats .kind{min-width:96px}
+.cc #cTypes{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-top:4px}
+.cc .type{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:6px 8px;background:#222;border:3px solid var(--c);line-height:1.25}
+.cc .type b{color:var(--c);font-size:15px}
+.cc .type small{font-size:11px;opacity:.85}
+.cc .type[aria-pressed=true]{background:var(--c);color:#000}
+.cc .type[aria-pressed=true] b{color:#000}
+.cc #takenNote{font-size:13px;color:#ffcc00}
+.cc #keys{font-size:12px;opacity:.75}
+.cc #go{background:#ffb300;color:#000;font-weight:800;padding:10px;font-size:17px}
+.cc #go:disabled{background:#555;color:#aaa}
+.cc #end{position:absolute;inset:0;display:none;place-items:center;background:#0008}
+.cc #end>div{background:#222;padding:22px 30px;border-radius:12px;font-size:18px;line-height:1.6;text-align:center;max-width:calc(100vw - 32px);box-sizing:border-box}
+.cc #end b{font-size:24px}
+.cc #end ol{text-align:left;margin:8px 0}
+.cc #end button{background:#ffb300;color:#000;padding:6px 14px;margin:8px 4px 0}
+@media (max-width:640px),(max-height:480px){
+  .cc #bar{gap:6px;padding:4px 8px;font-size:13px}
+  .cc #bar button{padding:2px 8px}
+  .cc #seatList{font-size:11px;top:calc(48px + env(safe-area-inset-top))}
+  .cc #msg{font-size:22px}
+}
+.cc #promo .cancel{background:#555;color:#fff}

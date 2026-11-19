@@ -5,7 +5,7 @@ import { BOT_BUDGET_MS } from './constants.ts';
 import { CritterType as T, Difficulty, GameState, HopKind, SeatKind } from './enums.ts';
 import { botMove, cost, hint, score } from './bots.ts';
 import { applyMove, findMove, legalMoves, movesOf, newGame, type Game } from './rules.ts';
-import { seeded } from './seed.ts';
+import { seeded } from '../../shared/seed.ts';
 
 const C = SeatKind.Computer;
 const game = (types: T[], kinds?: SeatKind[]) => newGame(types.map((type, i) => ({ kind: kinds?.[i] ?? C, type })));

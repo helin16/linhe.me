@@ -11,7 +11,7 @@ test('the same seed gives the same numbers, in [0, 1); different seeds differ', 
 });
 
 test('offline, ?seed= fixes the game; online ignores it; junk falls back to the clock', () => {
-  const page = 'https://example.com/games/critter-hop/';
+  const page = 'https://example.com/games/any/';
   assert.deepEqual(take(gameSetup(`${page}?seed=42`, false).random), take(seeded(42)));
   assert.equal(gameSetup(`${page}?seed=42`, false).seed, 42);
   assert.deepEqual(take(gameSetup(`${page}?seed=42`, true, 5).random), take(seeded(5)));
